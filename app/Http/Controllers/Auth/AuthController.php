@@ -11,21 +11,23 @@ use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
 {
-    public function __construct(private OtpService $otpService) {}
+    public function __construct(private OtpService $otpService)
+    {
+    }
 
     public function register(Request $request)
     {
         $data = $request->validate([
             'first_name' => 'required|string|max:100',
-            'last_name'  => 'required|string|max:100',
-            'email'      => 'required|email|unique:patients,email',
-            'phone'      => 'required|string|unique:patients,phone',
-            'password'   => 'required|string|min:8',
+            'last_name' => 'required|string|max:100',
+            'email' => 'required|email|unique:patients,email',
+            'phone' => 'required|string|unique:patients,phone',
+            'password' => 'required|string|min:8',
         ]);
 
         $patient = Patient::create([
             ...$data,
-            'password'    => Hash::make($data['password']),
+            'password' => Hash::make($data['password']),
             'is_verified' => false,
         ]);
 
@@ -35,7 +37,7 @@ class AuthController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Account created. Check your email for a verification code.',
-            'data'    => ['email' => $patient->email],
+            'data' => ['email' => $patient->email],
         ], 201);
     }
 
@@ -43,10 +45,13 @@ class AuthController extends Controller
     {
         $data = $request->validate([
             'email' => 'required|email|exists:patients,email',
-            'otp'   => 'required|string|size:6',
+            'otp' => 'required|string|size:6',
+            'type' => 'sometimes|in:email_verification,password_reset',
         ]);
 
-        $verified = $this->otpService->verify($data['email'], $data['otp'], 'email_verification');
+        $type = $data['type'] ?? 'email_verification';
+
+        $verified = $this->otpService->verify($data['email'], $data['otp'], $type);
 
         if (!$verified) {
             return response()->json([
@@ -55,15 +60,20 @@ class AuthController extends Controller
             ], 422);
         }
 
-        $patient = Patient::where('email', $data['email'])->first();
-        $patient->update([
-            'is_verified'       => true,
-            'email_verified_at' => now(),
-        ]);
+        // Only mark as verified for email_verification type
+        if ($type === 'email_verification') {
+            $patient = Patient::where('email', $data['email'])->first();
+            $patient->update([
+                'is_verified' => true,
+                'email_verified_at' => now(),
+            ]);
+        }
 
         return response()->json([
             'success' => true,
-            'message' => 'Email verified successfully. You can now sign in.',
+            'message' => $type === 'email_verification'
+                ? 'Email verified successfully. You can now sign in.'
+                : 'OTP verified. You can now reset your password.',
         ]);
     }
 
@@ -71,11 +81,11 @@ class AuthController extends Controller
     {
         $data = $request->validate([
             'email' => 'required|email|exists:patients,email',
-            'type'  => 'required|in:email_verification,password_reset',
+            'type' => 'required|in:email_verification,password_reset',
         ]);
 
         $patient = Patient::where('email', $data['email'])->first();
-        $code    = $this->otpService->generate($data['email'], $data['type']);
+        $code = $this->otpService->generate($data['email'], $data['type']);
 
         if ($data['type'] === 'email_verification') {
             $this->otpService->sendVerificationEmail($data['email'], $patient->first_name, $code);
@@ -92,7 +102,7 @@ class AuthController extends Controller
     public function login(Request $request)
     {
         $data = $request->validate([
-            'email'    => 'required|email',
+            'email' => 'required|email',
             'password' => 'required|string',
         ]);
 
@@ -109,7 +119,7 @@ class AuthController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Please verify your email before signing in.',
-                'action'  => 'verify_email',
+                'action' => 'verify_email',
             ], 403);
         }
 
@@ -118,15 +128,15 @@ class AuthController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Login successful.',
-            'data'    => [
-                'token'   => $token,
+            'data' => [
+                'token' => $token,
                 'patient' => [
-                    'id'         => $patient->id,
+                    'id' => $patient->id,
                     'first_name' => $patient->first_name,
-                    'last_name'  => $patient->last_name,
-                    'email'      => $patient->email,
-                    'phone'      => $patient->phone,
-                    'is_verified'=> $patient->is_verified,
+                    'last_name' => $patient->last_name,
+                    'email' => $patient->email,
+                    'phone' => $patient->phone,
+                    'is_verified' => $patient->is_verified,
                 ],
             ],
         ]);
@@ -139,7 +149,7 @@ class AuthController extends Controller
         ]);
 
         $patient = Patient::where('email', $data['email'])->first();
-        $code    = $this->otpService->generate($data['email'], 'password_reset');
+        $code = $this->otpService->generate($data['email'], 'password_reset');
         $this->otpService->sendPasswordResetEmail($data['email'], $patient->first_name, $code);
 
         return response()->json([
@@ -151,8 +161,8 @@ class AuthController extends Controller
     public function resetPassword(Request $request)
     {
         $data = $request->validate([
-            'email'    => 'required|email|exists:patients,email',
-            'otp'      => 'required|string|size:6',
+            'email' => 'required|email|exists:patients,email',
+            'otp' => 'required|string|size:6',
             'password' => 'required|string|min:8|confirmed',
         ]);
 
@@ -178,7 +188,7 @@ class AuthController extends Controller
     {
         return response()->json([
             'success' => true,
-            'data'    => $request->user(),
+            'data' => $request->user(),
         ]);
     }
 
@@ -191,4 +201,6 @@ class AuthController extends Controller
             'message' => 'Logged out successfully.',
         ]);
     }
+
+
 }
