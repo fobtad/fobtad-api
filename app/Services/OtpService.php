@@ -7,48 +7,50 @@ use Illuminate\Support\Facades\Mail;
 
 class OtpService
 {
-    public function generate(string $email, string $type): string
-    {
-        // Invalidate existing OTPs
-        Otp::where('email', $email)
-            ->where('type', $type)
-            ->where('used', false)
-            ->update(['used' => true]);
+  public function generate(string $email, string $type): string
+  {
+    // Invalidate existing OTPs
+    Otp::where('email', $email)
+      ->where('type', $type)
+      ->where('used', false)
+      ->update(['used' => true]);
 
-        $code = str_pad(rand(0, 999999), 6, '0', STR_PAD_LEFT);
+    $code = str_pad(rand(0, 999999), 6, '0', STR_PAD_LEFT);
 
-        Otp::create([
-            'email'      => $email,
-            'code'       => $code,
-            'type'       => $type,
-            'used'       => false,
-            'expires_at' => now()->addMinutes(10),
-        ]);
+    Otp::create([
+      'email' => $email,
+      'code' => $code,
+      'type' => $type,
+      'used' => false,
+      'expires_at' => now()->addMinutes(10),
+    ]);
 
-        return $code;
+    return $code;
+  }
+
+  public function verify(string $email, string $code, string $type): bool
+  {
+    $otp = Otp::where('email', $email)
+      ->where('code', $code)
+      ->where('type', $type)
+      ->where('used', false)
+      ->latest()
+      ->first();
+
+    if (!$otp || $otp->isExpired()) {
+      return false;
     }
 
-    public function verify(string $email, string $code, string $type): bool
-    {
-        $otp = Otp::where('email', $email)
-            ->where('code', $code)
-            ->where('type', $type)
-            ->where('used', false)
-            ->latest()
-            ->first();
-
-        if (!$otp || $otp->isExpired()) {
-            return false;
-        }
-
-        $otp->update(['used' => true]);
-        return true;
+    if ($type === 'email_verification') {
+      $otp->update(['used' => true]);
     }
+    return true;
+  }
 
-    public function sendVerificationEmail(string $email, string $name, string $code): void
-    {
-        $subject = 'Verify your FOBTAD account';
-        $body    = "
+  public function sendVerificationEmail(string $email, string $name, string $code): void
+  {
+    $subject = 'Verify your FOBTAD account';
+    $body = "
         <div style='font-family:Arial,sans-serif;max-width:600px;margin:0 auto;'>
           <div style='background:#042C53;padding:24px;text-align:center;'>
             <h1 style='color:#fff;margin:0;font-size:24px;letter-spacing:2px;'>FOBTAD</h1>
@@ -66,16 +68,16 @@ class OtpService
           </div>
         </div>";
 
-        $headers  = "MIME-Version: 1.0\r\n";
-        $headers .= "Content-Type: text/html; charset=UTF-8\r\n";
-        $headers .= "From: FOBTAD <hi@fobtad.com>\r\n";
-        mail($email, $subject, $body, $headers);
-    }
+    $headers = "MIME-Version: 1.0\r\n";
+    $headers .= "Content-Type: text/html; charset=UTF-8\r\n";
+    $headers .= "From: FOBTAD <hi@fobtad.com>\r\n";
+    mail($email, $subject, $body, $headers);
+  }
 
-    public function sendPasswordResetEmail(string $email, string $name, string $code): void
-    {
-        $subject = 'Reset your FOBTAD password';
-        $body    = "
+  public function sendPasswordResetEmail(string $email, string $name, string $code): void
+  {
+    $subject = 'Reset your FOBTAD password';
+    $body = "
         <div style='font-family:Arial,sans-serif;max-width:600px;margin:0 auto;'>
           <div style='background:#042C53;padding:24px;text-align:center;'>
             <h1 style='color:#fff;margin:0;font-size:24px;letter-spacing:2px;'>FOBTAD</h1>
@@ -93,9 +95,9 @@ class OtpService
           </div>
         </div>";
 
-        $headers  = "MIME-Version: 1.0\r\n";
-        $headers .= "Content-Type: text/html; charset=UTF-8\r\n";
-        $headers .= "From: FOBTAD <hi@fobtad.com>\r\n";
-        mail($email, $subject, $body, $headers);
-    }
+    $headers = "MIME-Version: 1.0\r\n";
+    $headers .= "Content-Type: text/html; charset=UTF-8\r\n";
+    $headers .= "From: FOBTAD <hi@fobtad.com>\r\n";
+    mail($email, $subject, $body, $headers);
+  }
 }
