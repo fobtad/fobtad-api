@@ -176,7 +176,11 @@ class AuthController extends Controller
         }
 
         Patient::where('email', $data['email'])
-            ->update(['password' => Hash::make($data['password'])]);
+            ->update([
+                'password' => Hash::make($data['password']),
+                'is_verified' => true,
+                'email_verified_at' => now(),
+            ]);
 
         return response()->json([
             'success' => true,
