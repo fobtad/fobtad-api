@@ -66,6 +66,16 @@ Route::prefix('v1')->middleware(['auth:sanctum'])->group(function () {
     // Payments
     Route::post('/payments/initialize', [PaymentController::class, 'initialize']);
     Route::get('/payments/verify/{reference}', [PaymentController::class, 'verify']);
+
+
+    // ── Wallet ──
+    Route::get('/wallet', [WalletController::class, 'show']);
+    Route::get('/wallet/transactions', [WalletController::class, 'transactions']);
+    Route::post('/wallet/virtual-account', [WalletController::class, 'createVirtualAccount']);
+    Route::put('/wallet/virtual-account/{id}/primary', [WalletController::class, 'setPrimary']);
+    Route::delete('/wallet/virtual-account/{id}', [WalletController::class, 'deleteVirtualAccount']);
+    Route::post('/wallet/fund', [WalletController::class, 'initializeFunding']);
+    Route::get('/wallet/verify/{reference}', [WalletController::class, 'verifyFunding']);
 });
 
 // ── Hospital portal auth ──
@@ -127,12 +137,5 @@ Route::prefix('v1/provider')->middleware(['auth:sanctum'])->group(function () {
     Route::put('/trucks/{id}', [TowTruckController::class, 'update']);
     Route::delete('/trucks/{id}', [TowTruckController::class, 'destroy']);
 
-    // ── Wallet ──
-    Route::get('/wallet', [WalletController::class, 'show']);
-    Route::get('/wallet/transactions', [WalletController::class, 'transactions']);
-    Route::post('/wallet/virtual-account', [WalletController::class, 'createVirtualAccount']);
-    Route::put('/wallet/virtual-account/{id}/primary', [WalletController::class, 'setPrimary']);
-    Route::delete('/wallet/virtual-account/{id}', [WalletController::class, 'deleteVirtualAccount']);
-    Route::post('/wallet/fund', [WalletController::class, 'initializeFunding']);
-    Route::get('/wallet/verify/{reference}', [WalletController::class, 'verifyFunding']);
+
 });
