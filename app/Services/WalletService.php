@@ -26,7 +26,6 @@ class WalletService
     // ── Create virtual account ──
     public function createVirtualAccount(Wallet $wallet, Patient $patient, string $preferredBank = 'wema-bank'): array
     {
-        // Create or get Paystack customer
         $customerResponse = $this->paystack->createCustomer($patient);
 
         if (!($customerResponse['status'] ?? false)) {
@@ -41,8 +40,6 @@ class WalletService
         }
 
         $customerCode = $customerData['customer_code'];
-
-        // Create dedicated virtual account
         $response = $this->paystack->createDedicatedAccount($customerCode, $preferredBank);
 
         if (!($response['status'] ?? false)) {
@@ -122,33 +119,38 @@ class WalletService
 
         $amount = $txData['amount'] / 100;
 
-        // ── Check if already processed ──
-        $transaction = \App\Models\WalletTransaction::where('reference', $reference)
-            ->first();
+        // Find the transaction regardless of status
+        $transaction = WalletTransaction::where('reference', $reference)->first();
 
         if (!$transaction) {
             throw new \Exception('Transaction not found.');
         }
 
-        // Already credited — return current balance without erroring
+        $wallet = $transaction->wallet;
+
+        // ── Already credited — just return current balance ──
         if ($transaction->status === 'success') {
-            $wallet = $transaction->wallet;
             return [
                 'amount' => $amount,
                 'balance' => $wallet->fresh()->balance,
             ];
         }
 
-        $wallet = $transaction->wallet;
+        // ── Credit wallet atomically ──
+        \DB::transaction(function () use ($wallet, $transaction, $amount, $reference) {
+            $balanceBefore = $wallet->balance;
+            $balanceAfter = $balanceBefore + $amount;
 
-        // Credit wallet
-        $wallet->credit($amount, $reference, 'Wallet funding via Paystack', 'paystack_checkout');
+            // Update wallet balance
+            $wallet->increment('balance', $amount);
 
-        // Update transaction
-        $transaction->update([
-            'status' => 'success',
-            'balance_after' => $wallet->fresh()->balance,
-        ]);
+            // Update the existing pending transaction — no new insert
+            $transaction->update([
+                'status' => 'success',
+                'balance_before' => $balanceBefore,
+                'balance_after' => $balanceAfter,
+            ]);
+        });
 
         return [
             'amount' => $amount,
@@ -176,6 +178,7 @@ class WalletService
 
             $wallet = $virtualAccount->wallet;
 
+            // Idempotency — skip if already processed
             $exists = $wallet->transactions()->where('reference', $reference)->exists();
             if ($exists)
                 return;
