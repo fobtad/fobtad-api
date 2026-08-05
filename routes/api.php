@@ -26,20 +26,6 @@ Route::get('/v1/health', fn() => response()->json([
     'timestamp' => now(),
 ]));
 
-Route::get('/clear-cache', function () {
-    Artisan::call('route:clear');
-    Artisan::call('config:clear');
-    Artisan::call('cache:clear');
-    return 'Cache cleared';
-});
-
-Route::get('/run-migrate', function () {
-    if (request()->get('key') !== 'fobtad2026')
-        abort(403);
-    Artisan::call('migrate', ['--force' => true]);
-    return Artisan::output();
-});
-
 // ── Paystack webhook (no auth) ──
 Route::post('/v1/wallet/webhook', [WalletController::class, 'webhook']);
 
