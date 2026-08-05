@@ -108,27 +108,47 @@ class WalletService
     // ── Verify and credit wallet ──
     public function verifyCheckout(string $reference): array
     {
-        $result = $this->paystack->verifyPayment($reference);
+        $response = $this->paystack->verifyPayment($reference);
 
-        if (!($result['status'] ?? false)) {
+        if (!($response['status'] ?? false)) {
             throw new \Exception('Verification failed.');
         }
 
-        $txData = $result['data'];
+        $txData = $response['data'];
 
         if ($txData['status'] !== 'success') {
             throw new \Exception('Payment was not successful.');
         }
 
-        $transaction = WalletTransaction::where('reference', $reference)
-            ->where('status', 'pending')
-            ->firstOrFail();
-
-        $wallet = $transaction->wallet;
         $amount = $txData['amount'] / 100;
 
+        // ── Check if already processed ──
+        $transaction = \App\Models\WalletTransaction::where('reference', $reference)
+            ->first();
+
+        if (!$transaction) {
+            throw new \Exception('Transaction not found.');
+        }
+
+        // Already credited — return current balance without erroring
+        if ($transaction->status === 'success') {
+            $wallet = $transaction->wallet;
+            return [
+                'amount' => $amount,
+                'balance' => $wallet->fresh()->balance,
+            ];
+        }
+
+        $wallet = $transaction->wallet;
+
+        // Credit wallet
         $wallet->credit($amount, $reference, 'Wallet funding via Paystack', 'paystack_checkout');
-        $transaction->update(['status' => 'success', 'balance_after' => $wallet->fresh()->balance]);
+
+        // Update transaction
+        $transaction->update([
+            'status' => 'success',
+            'balance_after' => $wallet->fresh()->balance,
+        ]);
 
         return [
             'amount' => $amount,
