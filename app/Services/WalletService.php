@@ -24,7 +24,7 @@ class WalletService
     }
 
     // ── Create virtual account ──
-    public function createVirtualAccount(Wallet $wallet, Patient $patient, string $preferredBank = 'wema-bank'): array
+    public function createVirtualAccount1(Wallet $wallet, Patient $patient, string $preferredBank = 'wema-bank'): array
     {
         $customerResponse = $this->paystack->createCustomer($patient);
 
@@ -57,6 +57,26 @@ class WalletService
             'bank_code' => $accountData['bank']['slug'] ?? null,
             'paystack_reference' => $accountData['id'] ?? null,
             'customer_code' => $customerCode,
+            'is_primary' => $isPrimary,
+            'status' => 'active',
+        ]);
+
+        return $virtualAccount->toArray();
+    }
+
+    public function createVirtualAccount(Wallet $wallet, Patient $patient, string $preferredBank = 'wema-bank'): array
+    {
+        $isPrimary = !$wallet->virtualAccounts()->exists();
+
+        // ── Mock virtual account — replace with real Paystack call when live ──
+        $virtualAccount = VirtualAccount::create([
+            'wallet_id' => $wallet->id,
+            'account_number' => '012' . rand(1000000, 9999999),
+            'account_name' => strtoupper($patient->first_name . ' ' . $patient->last_name) . ' / FOBTAD',
+            'bank_name' => 'Wema Bank',
+            'bank_code' => 'wema-bank',
+            'paystack_reference' => 'MOCK-' . strtoupper(\Illuminate\Support\Str::random(8)),
+            'customer_code' => 'MOCK-CUSTOMER',
             'is_primary' => $isPrimary,
             'status' => 'active',
         ]);
