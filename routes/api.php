@@ -74,6 +74,8 @@ Route::prefix('v1')->middleware(['auth:sanctum'])->group(function () {
     Route::post('/bookings/towing', [BookingController::class, 'towing']);
     Route::put('/bookings/{id}/cancel', [BookingController::class, 'cancel']);
     Route::post('/bookings/{id}/rate', [BookingController::class, 'rate']);
+    Route::post('/bookings/estimate', [BookingController::class, 'estimate']);
+    Route::get('/bookings/{reference}/location', [BookingController::class, 'location']);
 
     // Tracking
     Route::get('/trips/{bookingId}/track', [TripController::class, 'track']);
