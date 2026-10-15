@@ -125,6 +125,41 @@ class HospitalPortalTest extends TestCase
         $this->assertNotNull($booking->fresh()->trip->arrived_at);
     }
 
+    public function test_patient_tracking_shows_real_crew_and_status(): void
+    {
+        $this->hospital->update(['latitude' => 6.45, 'longitude' => 3.40]);
+        $booking   = $this->makeBooking(['pickup_latitude' => 6.43, 'pickup_longitude' => 3.42]);
+        $paramedic = $this->makeParamedic($this->hospital, 't');
+        $ambulance = $this->makeAmbulance($this->hospital, 'TRK-1');
+
+        Sanctum::actingAs($this->patient);
+        $this->getJson("/api/v1/bookings/{$booking->reference}/location")
+            ->assertOk()
+            ->assertJsonPath('data.status', 'pending')
+            ->assertJsonPath('data.crew', null)
+            ->assertJsonPath('data.eta_minutes', null);
+
+        Sanctum::actingAs($this->staff);
+        $this->putJson("/api/v1/hospital/bookings/{$booking->id}/accept", [
+            'paramedic_id' => $paramedic->id, 'ambulance_id' => $ambulance->id,
+        ])->assertOk();
+
+        Sanctum::actingAs($this->patient);
+        $data = $this->getJson("/api/v1/bookings/{$booking->reference}/location")->assertOk()->json('data');
+
+        $this->assertSame('assigned', $data['status']);
+        $this->assertSame('Medic t', $data['crew']['name']);
+        $this->assertSame('TRK-1', $data['vehicle']['plate_number']);
+        $this->assertSame('Hospital a', $data['responder']['name']);
+        $this->assertEquals(6.45, $data['vehicle_lat']);
+        $this->assertGreaterThan(3, $data['eta_minutes']);
+
+        // Another patient can't see it.
+        $other = Patient::create(['first_name' => 'X', 'last_name' => 'Y', 'email' => 'x@t.test', 'phone' => '099', 'password' => 'x']);
+        Sanctum::actingAs($other);
+        $this->getJson("/api/v1/bookings/{$booking->reference}/location")->assertNotFound();
+    }
+
     public function test_patient_cancel_frees_assigned_crew(): void
     {
         $booking   = $this->makeBooking();

@@ -297,25 +297,81 @@ class BookingController extends Controller
         return $earthRadius * 2 * atan2(sqrt($a), sqrt(1 - $a));
     }
 
-    // In BookingController
+    /**
+     * Live tracking for the patient app: status, assigned crew and vehicle.
+     * There is no live GPS yet, so the vehicle starts at the hospital (or the
+     * FOBTAD office) and the ETA is estimated from straight-line distance.
+     */
     public function location(Request $request, string $reference): JsonResponse
     {
         $booking = Booking::where('reference', $reference)
             ->where('patient_id', $request->user()->id)
+            ->with(['hospital', 'paramedic', 'ambulance', 'provider', 'driver', 'towTruck', 'trip'])
             ->firstOrFail();
 
-        // TODO: when drivers have a live location table, pull from there.
-        // For now return the office coordinates as the vehicle's starting position.
+        $officeLat = 6.426405506305938;
+        $officeLng = 3.4927516958304357;
+
+        $vehicleLat = $booking->hospital?->latitude ?? $officeLat;
+        $vehicleLng = $booking->hospital?->longitude ?? $officeLng;
+        $destLat    = $booking->pickup_latitude ?? $vehicleLat;
+        $destLng    = $booking->pickup_longitude ?? $vehicleLng;
+
+        // ~30 km/h average in Lagos traffic, plus a few minutes to get moving.
+        $eta = match ($booking->status) {
+            'accepted', 'assigned', 'en_route' => (int) ceil($this->haversine($vehicleLat, $vehicleLng, $destLat, $destLng) / 30 * 60) + 3,
+            default                            => null,
+        };
+
+        $crew = $booking->paramedic ? [
+            'name'        => $booking->paramedic->full_name,
+            'role'        => ucwords(str_replace('_', ' ', $booking->paramedic->role ?? 'paramedic')),
+            'phone'       => $booking->paramedic->phone,
+            'rating'      => $booking->paramedic->rating ?: null,
+            'total_trips' => $booking->paramedic->total_trips,
+        ] : ($booking->driver ? [
+            'name'        => $booking->driver->full_name,
+            'role'        => 'Tow operator',
+            'phone'       => $booking->driver->phone,
+            'rating'      => (float) $booking->driver->rating ?: null,
+            'total_trips' => $booking->driver->total_jobs,
+        ] : null);
+
+        $vehicle = $booking->ambulance ? [
+            'plate_number' => $booking->ambulance->plate_number,
+            'type'         => $booking->ambulance->type,
+            'description'  => trim("{$booking->ambulance->make} {$booking->ambulance->model}") ?: null,
+        ] : ($booking->towTruck ? [
+            'plate_number' => $booking->towTruck->plate_number,
+            'type'         => $booking->towTruck->type,
+            'description'  => trim("{$booking->towTruck->make} {$booking->towTruck->model}") ?: null,
+        ] : null);
+
         return response()->json([
             'success' => true,
-            'data' => [
-                'reference' => $booking->reference,
-                'status' => $booking->status,
-                'vehicle_lat' => 6.426405506305938,
-                'vehicle_lng' => 3.4927516958304357,
-                'destination_lat' => $booking->pickup_latitude,
-                'destination_lng' => $booking->pickup_longitude,
-                'eta_minutes' => 8,
+            'data'    => [
+                'booking_id'      => $booking->id,
+                'reference'       => $booking->reference,
+                'type'            => $booking->type,
+                'status'          => $booking->status,
+                'vehicle_lat'     => $vehicleLat,
+                'vehicle_lng'     => $vehicleLng,
+                'destination_lat' => $destLat,
+                'destination_lng' => $destLng,
+                'eta_minutes'     => $eta,
+                'crew'            => $crew,
+                'vehicle'         => $vehicle,
+                'responder'       => $booking->hospital ? [
+                    'name'  => $booking->hospital->name,
+                    'phone' => $booking->hospital->phone,
+                ] : ($booking->provider ? [
+                    'name'  => $booking->provider->company_name,
+                    'phone' => $booking->provider->phone,
+                ] : null),
+                'accepted_at'         => $booking->accepted_at,
+                'arrived_at'          => $booking->trip?->arrived_at,
+                'completed_at'        => $booking->completed_at,
+                'cancellation_reason' => $booking->status === 'cancelled' ? $booking->cancellation_reason : null,
             ],
         ]);
     }
