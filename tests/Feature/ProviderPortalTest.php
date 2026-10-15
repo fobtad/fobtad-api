@@ -117,7 +117,11 @@ class ProviderPortalTest extends TestCase
         $this->makeJob();
         Sanctum::actingAs($this->staff);
 
-        $this->getJson('/api/v1/provider/dashboard')->assertOk()->assertJsonPath('data.stats.pending', 1);
+        $this->patient->update(['blood_group' => 'O+', 'allergies' => 'Penicillin']);
+        $dash = $this->getJson('/api/v1/provider/dashboard')->assertOk()->assertJsonPath('data.stats.pending', 1);
+        $this->assertArrayNotHasKey('blood_group', $dash->json('data.recent_jobs.0.patient'));
+        $jobs = $this->getJson('/api/v1/provider/jobs')->assertOk();
+        $this->assertSame(['id', 'first_name', 'last_name', 'phone'], array_keys($jobs->json('data.data.0.patient')));
         $this->getJson('/api/v1/provider/jobs/summary')->assertOk()->assertJsonPath('data.pending', 1);
         $this->getJson('/api/v1/provider/reports?period=year')->assertOk()->assertJsonPath('data.kpis.total_jobs', 1);
 
