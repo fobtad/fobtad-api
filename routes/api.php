@@ -6,6 +6,7 @@ use App\Http\Controllers\WalletController;
 use App\Http\Controllers\TripController;
 use App\Http\Controllers\PatientController;
 use App\Http\Controllers\PaymentController;
+use App\Http\Controllers\SetupController;
 use App\Http\Controllers\Hospital\HospitalAuthController;
 use App\Http\Controllers\Hospital\HospitalDashboardController;
 use App\Http\Controllers\Hospital\HospitalBookingController;
@@ -42,6 +43,10 @@ Route::get('/run-migrate', function () {
     return Artisan::output();
 });
 
+
+// ── TEMPORARY hospital onboarding page — disabled unless FOBTAD_SETUP_KEY is set ──
+Route::get('/setup/hospital-user', [SetupController::class, 'form']);
+Route::post('/setup/hospital-user', [SetupController::class, 'store'])->middleware('throttle:5,1');
 
 // ── Paystack webhook (no auth) ──
 Route::post('/v1/wallet/webhook', [WalletController::class, 'webhook']);

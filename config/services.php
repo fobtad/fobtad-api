@@ -39,4 +39,9 @@ return [
         'public_key' => env('PAYSTACK_PUBLIC_KEY'),
     ],
 
+    // Temporary onboarding page (/api/setup/hospital-user). Leave unset to disable it.
+    'fobtad' => [
+        'setup_key' => env('FOBTAD_SETUP_KEY'),
+    ],
+
 ];
