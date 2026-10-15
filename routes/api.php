@@ -6,6 +6,7 @@ use App\Http\Controllers\WalletController;
 use App\Http\Controllers\TripController;
 use App\Http\Controllers\PatientController;
 use App\Http\Controllers\PaymentController;
+use App\Http\Controllers\EarningsController;
 use App\Http\Controllers\SetupController;
 use App\Http\Controllers\Hospital\HospitalAuthController;
 use App\Http\Controllers\Hospital\HospitalDashboardController;
@@ -56,8 +57,9 @@ Route::get('/setup/providers', [SetupController::class, 'providers']);
 Route::post('/setup/providers', [SetupController::class, 'providers'])->middleware('throttle:10,1');
 Route::post('/setup/providers/{id}/status', [SetupController::class, 'setProviderStatus'])->middleware('throttle:20,1');
 
-// ── Paystack webhook (no auth) ──
+// ── Paystack webhook + browser return page (no auth) ──
 Route::post('/v1/wallet/webhook', [WalletController::class, 'webhook']);
+Route::get('/v1/payments/callback', [PaymentController::class, 'callback']);
 
 
 // ── Patient auth ──
@@ -95,9 +97,11 @@ Route::prefix('v1')->middleware(['auth:sanctum', 'user.type:patient'])->group(fu
     // Tracking
     Route::get('/trips/{bookingId}/track', [TripController::class, 'track']);
 
-    // Payments
-    Route::post('/payments/initialize', [PaymentController::class, 'initialize']);
-    Route::get('/payments/verify/{reference}', [PaymentController::class, 'verify']);
+    // Payments (amounts always come from the booking's server-side fare)
+    Route::get('/bookings/{id}/payment', [PaymentController::class, 'summary']);
+    Route::post('/bookings/{id}/pay', [PaymentController::class, 'pay'])->middleware('throttle:10,1');
+    Route::post('/payments/initialize', [PaymentController::class, 'initialize'])->middleware('throttle:10,1');
+    Route::get('/payments/verify/{reference}', [PaymentController::class, 'verify'])->middleware('throttle:30,1');
 
 
     // ── Wallet ──
@@ -106,8 +110,8 @@ Route::prefix('v1')->middleware(['auth:sanctum', 'user.type:patient'])->group(fu
     Route::post('/wallet/virtual-account', [WalletController::class, 'createVirtualAccount']);
     Route::put('/wallet/virtual-account/{id}/primary', [WalletController::class, 'setPrimary']);
     Route::delete('/wallet/virtual-account/{id}', [WalletController::class, 'deleteVirtualAccount']);
-    Route::post('/wallet/fund', [WalletController::class, 'initializeFunding']);
-    Route::get('/wallet/verify/{reference}', [WalletController::class, 'verifyFunding']);
+    Route::post('/wallet/fund', [WalletController::class, 'initializeFunding'])->middleware('throttle:10,1');
+    Route::get('/wallet/verify/{reference}', [WalletController::class, 'verifyFunding'])->middleware('throttle:30,1');
 });
 
 // ── Hospital portal auth ──
@@ -129,6 +133,11 @@ Route::prefix('v1/hospital')->middleware(['auth:sanctum', 'user.type:hospital'])
     Route::put('/profile', [HospitalSettingsController::class, 'updateProfile']);
     Route::put('/account', [HospitalSettingsController::class, 'updateAccount']);
     Route::put('/password', [HospitalSettingsController::class, 'updatePassword']);
+
+    // Earnings & payouts
+    Route::get('/earnings', [EarningsController::class, 'index']);
+    Route::put('/bank-account', [EarningsController::class, 'updateBank']);
+    Route::post('/payouts', [EarningsController::class, 'requestPayout'])->middleware('throttle:5,1');
 
     // Bookings
     Route::get('/bookings', [HospitalBookingController::class, 'index']);
@@ -171,6 +180,11 @@ Route::prefix('v1/provider')->middleware(['auth:sanctum', 'user.type:provider'])
     Route::put('/profile', [ProviderSettingsController::class, 'updateProfile']);
     Route::put('/account', [ProviderSettingsController::class, 'updateAccount']);
     Route::put('/password', [ProviderSettingsController::class, 'updatePassword']);
+
+    // Earnings & payouts
+    Route::get('/earnings', [EarningsController::class, 'index']);
+    Route::put('/bank-account', [EarningsController::class, 'updateBank']);
+    Route::post('/payouts', [EarningsController::class, 'requestPayout'])->middleware('throttle:5,1');
 
     // Jobs
     Route::get('/jobs', [ProviderJobController::class, 'index']);

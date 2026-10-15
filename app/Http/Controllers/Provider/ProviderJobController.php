@@ -18,7 +18,8 @@ use Illuminate\Validation\ValidationException;
  */
 class ProviderJobController extends Controller
 {
-    private const RELATIONS = ['patient', 'driver', 'towTruck', 'trip'];
+    // Providers only see the customer's name and phone, never their medical profile.
+    private const RELATIONS = ['patient:id,first_name,last_name,phone', 'driver', 'towTruck', 'trip'];
 
     public function index(Request $request)
     {
@@ -192,6 +193,9 @@ class ProviderJobController extends Controller
 
             return $job;
         });
+
+        // Charge the patient's wallet now; anything left is paid by card in the app.
+        app(\App\Services\PaymentService::class)->settle($job);
 
         return response()->json([
             'success' => true,

@@ -28,7 +28,7 @@ class ProviderDashboardController extends Controller
 
         $activeJobs = $jobs()
             ->whereIn('status', Booking::ACTIVE_STATUSES)
-            ->with(['patient', 'driver', 'towTruck', 'trip'])
+            ->with(['patient:id,first_name,last_name,phone', 'driver', 'towTruck', 'trip'])
             ->oldest('accepted_at')
             ->get();
 
@@ -65,7 +65,7 @@ class ProviderDashboardController extends Controller
                         ->selectRaw('incident_type, count(*) as total')->groupBy('incident_type')->pluck('total', 'incident_type'),
                 ],
                 'active_jobs' => $activeJobs,
-                'recent_jobs' => $jobs()->with(['patient', 'driver', 'towTruck'])->latest()->take(6)->get(),
+                'recent_jobs' => $jobs()->with(['patient:id,first_name,last_name,phone', 'driver', 'towTruck'])->latest()->take(6)->get(),
                 'provider'    => $provider,
             ],
         ]);

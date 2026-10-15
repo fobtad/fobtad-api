@@ -4,6 +4,9 @@ namespace App\Http\Controllers;
 
 use App\Models\Booking;
 use App\Models\Hospital;
+use App\Models\PlatformSetting;
+use App\Services\FareCalculator;
+use App\Services\PaymentService;
 use App\Models\Provider;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -52,14 +55,10 @@ class BookingController extends Controller
             $request->destination_lng,
         );
 
-        $rates = [
-            'standard' => ['base' => 3000, 'per_km' => 250, 'floor' => 8000],
-            'advanced' => ['base' => 5000, 'per_km' => 450, 'floor' => 15000],
-            'wheelchair' => ['base' => 4000, 'per_km' => 320, 'floor' => 10000],
-        ];
-
-        $rate = $rates[$request->ride_type];
+        $rate    = PlatformSetting::get('rates')[$request->ride_type];
         $rawCost = $rate['base'] + ($distanceKm * $rate['per_km']);
+        // The fixed fare charged if booked now; min/max kept for older app versions.
+        $fare = FareCalculator::fare($request->ride_type, $distanceKm);
 
         $minPrice = (int) round(max($rate['floor'], $rawCost * 0.9));
         $maxPrice = (int) round(max($rate['floor'], $rawCost * 1.1));
@@ -68,6 +67,7 @@ class BookingController extends Controller
             'success' => true,
             'distance_km' => round($distanceKm, 2),
             'ride_type' => $request->ride_type,
+            'fare' => $fare,
             'min_price' => $minPrice,
             'max_price' => $maxPrice,
             'currency' => 'NGN',
@@ -95,6 +95,7 @@ class BookingController extends Controller
             'pickup_latitude' => $data['latitude'],
             'pickup_longitude' => $data['longitude'],
             'incident_type' => $data['incident_type'],
+            'fare' => FareCalculator::forBooking('emergency', null, (float) $data['latitude'], (float) $data['longitude'], null, null, $hospital),
         ]);
 
         return response()->json([
@@ -143,6 +144,7 @@ class BookingController extends Controller
             'estimated_min_price' => $data['estimated_min_price'] ?? null,
             'estimated_max_price' => $data['estimated_max_price'] ?? null,
             'notes' => $data['notes'] ?? null,
+            'fare' => FareCalculator::forBooking('scheduled', $data['ride_type'], (float) $data['pickup_lat'], (float) $data['pickup_lng'], (float) $data['destination_lat'], (float) $data['destination_lng']),
         ]);
 
         return response()->json([
@@ -152,6 +154,7 @@ class BookingController extends Controller
                 'booking_id' => $booking->id,
                 'reference' => $booking->reference,
                 'status' => $booking->status,
+                'fare' => $booking->fare,
             ],
         ], 201);
     }
@@ -192,6 +195,8 @@ class BookingController extends Controller
             'is_high_risk' => $data['is_high_risk'] ?? false,
             'needs_wheelchair' => $data['needs_wheelchair'] ?? false,
             'notes' => $data['notes'] ?? null,
+            'fare' => FareCalculator::forBooking('maternal', !empty($data['needs_wheelchair']) ? 'wheelchair' : null,
+                $data['pickup_lat'] ?? null, $data['pickup_lng'] ?? null, $data['destination_lat'] ?? null, $data['destination_lng'] ?? null, $hospital),
         ]);
 
         return response()->json([
@@ -237,6 +242,8 @@ class BookingController extends Controller
             'incident_type' => $data['issue_type'],
             'ride_type' => $data['truck_type'],
             'notes' => ($data['notes'] ?? '') . ' Vehicle: ' . $data['vehicle_make'] . ' ' . $data['vehicle_plate'],
+            'fare' => FareCalculator::forBooking('towing', $data['truck_type'],
+                $data['pickup_lat'] ?? null, $data['pickup_lng'] ?? null, $data['destination_lat'] ?? null, $data['destination_lng'] ?? null),
         ]);
 
         return response()->json([
@@ -257,13 +264,24 @@ class BookingController extends Controller
             ->whereIn('status', ['pending', 'accepted', 'assigned'])
             ->findOrFail($id);
 
+        $crewAssigned = $booking->status !== 'pending';
+        $fee = (float) PlatformSetting::get('cancellation_fee');
+
         $booking->update([
             'status' => 'cancelled',
             'cancelled_at' => now(),
             'cancellation_reason' => $request->input('reason', 'Cancelled by patient'),
+            // Free before a crew is assigned; after that the flat cancellation fee applies.
+            'fare' => $crewAssigned && $fee > 0 ? $fee : null,
         ]);
 
         $booking->releaseCrew();
+
+        if ($crewAssigned && $fee > 0) {
+            app(PaymentService::class)->settle($booking);
+        } else {
+            $booking->update(['payment_status' => 'waived']);
+        }
 
         return response()->json([
             'success' => true,
@@ -381,6 +399,10 @@ class BookingController extends Controller
                 'arrived_at'          => $booking->trip?->arrived_at,
                 'completed_at'        => $booking->completed_at,
                 'cancellation_reason' => $booking->status === 'cancelled' ? $booking->cancellation_reason : null,
+                'fare'                => $booking->fare,
+                'amount_paid'         => $booking->amount_paid,
+                'amount_due'          => $booking->amount_due,
+                'payment_status'      => $booking->payment_status,
             ],
         ]);
     }
