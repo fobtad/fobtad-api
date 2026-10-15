@@ -214,10 +214,14 @@ class BookingController extends Controller
             'truck_type' => 'required|in:flatbed,wheel_lift,heavy_recovery',
             'vehicle_make' => 'required|string',
             'vehicle_plate' => 'required|string',
+            'pickup_lat' => 'sometimes|nullable|numeric',
+            'pickup_lng' => 'sometimes|nullable|numeric',
+            'destination_lat' => 'sometimes|nullable|numeric',
+            'destination_lng' => 'sometimes|nullable|numeric',
             'notes' => 'sometimes|string',
         ]);
 
-        $provider = Provider::where('status', 'active')->first();
+        $provider = Provider::nearestActive('towing', $data['pickup_lat'] ?? null, $data['pickup_lng'] ?? null);
 
         $booking = Booking::create([
             'patient_id' => $request->user()->id,
@@ -225,7 +229,11 @@ class BookingController extends Controller
             'type' => 'towing',
             'status' => 'pending',
             'pickup_address' => $data['pickup_address'],
+            'pickup_latitude' => $data['pickup_lat'] ?? null,
+            'pickup_longitude' => $data['pickup_lng'] ?? null,
             'destination_address' => $data['destination_address'],
+            'destination_latitude' => $data['destination_lat'] ?? null,
+            'destination_longitude' => $data['destination_lng'] ?? null,
             'incident_type' => $data['issue_type'],
             'ride_type' => $data['truck_type'],
             'notes' => ($data['notes'] ?? '') . ' Vehicle: ' . $data['vehicle_make'] . ' ' . $data['vehicle_plate'],
@@ -312,8 +320,9 @@ class BookingController extends Controller
         $officeLat = 6.426405506305938;
         $officeLng = 3.4927516958304357;
 
-        $vehicleLat = $booking->hospital?->latitude ?? $officeLat;
-        $vehicleLng = $booking->hospital?->longitude ?? $officeLng;
+        $base       = $booking->hospital ?? $booking->provider;
+        $vehicleLat = $base?->latitude ?? $officeLat;
+        $vehicleLng = $base?->longitude ?? $officeLng;
         $destLat    = $booking->pickup_latitude ?? $vehicleLat;
         $destLng    = $booking->pickup_longitude ?? $vehicleLng;
 

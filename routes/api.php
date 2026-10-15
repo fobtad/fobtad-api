@@ -17,6 +17,8 @@ use App\Http\Controllers\Hospital\AmbulanceController;
 use App\Http\Controllers\Provider\ProviderAuthController;
 use App\Http\Controllers\Provider\ProviderDashboardController;
 use App\Http\Controllers\Provider\ProviderJobController;
+use App\Http\Controllers\Provider\ProviderReportController;
+use App\Http\Controllers\Provider\ProviderSettingsController;
 use App\Http\Controllers\Provider\DriverController;
 use App\Http\Controllers\Provider\TowTruckController;
 use Illuminate\Support\Facades\Route;
@@ -50,6 +52,9 @@ Route::post('/setup/hospital-user', [SetupController::class, 'store'])->middlewa
 Route::get('/setup/hospitals', [SetupController::class, 'hospitals']);
 Route::post('/setup/hospitals', [SetupController::class, 'hospitals'])->middleware('throttle:10,1');
 Route::post('/setup/hospitals/{id}/status', [SetupController::class, 'setStatus'])->middleware('throttle:20,1');
+Route::get('/setup/providers', [SetupController::class, 'providers']);
+Route::post('/setup/providers', [SetupController::class, 'providers'])->middleware('throttle:10,1');
+Route::post('/setup/providers/{id}/status', [SetupController::class, 'setProviderStatus'])->middleware('throttle:20,1');
 
 // ── Paystack webhook (no auth) ──
 Route::post('/v1/wallet/webhook', [WalletController::class, 'webhook']);
@@ -149,19 +154,31 @@ Route::prefix('v1/hospital')->middleware(['auth:sanctum', 'user.type:hospital'])
 
 // ── Provider portal auth ──
 Route::prefix('v1/provider')->group(function () {
-    Route::post('/login', [ProviderAuthController::class, 'login']);
+    Route::post('/register', [ProviderAuthController::class, 'register'])->middleware('throttle:5,1');
+    Route::post('/login', [ProviderAuthController::class, 'login'])->middleware('throttle:10,1');
     Route::post('/logout', [ProviderAuthController::class, 'logout'])
         ->middleware(['auth:sanctum', 'user.type:provider']);
 });
 
 // ── Provider portal protected routes ──
 Route::prefix('v1/provider')->middleware(['auth:sanctum', 'user.type:provider'])->group(function () {
+    Route::get('/me', [ProviderAuthController::class, 'me']);
     Route::get('/dashboard', [ProviderDashboardController::class, 'index']);
+    Route::get('/reports', [ProviderReportController::class, 'index']);
+
+    // Profile & account
+    Route::get('/profile', [ProviderSettingsController::class, 'profile']);
+    Route::put('/profile', [ProviderSettingsController::class, 'updateProfile']);
+    Route::put('/account', [ProviderSettingsController::class, 'updateAccount']);
+    Route::put('/password', [ProviderSettingsController::class, 'updatePassword']);
 
     // Jobs
     Route::get('/jobs', [ProviderJobController::class, 'index']);
+    Route::get('/jobs/summary', [ProviderJobController::class, 'summary']);
+    Route::get('/jobs/{id}', [ProviderJobController::class, 'show']);
     Route::put('/jobs/{id}/accept', [ProviderJobController::class, 'accept']);
     Route::put('/jobs/{id}/decline', [ProviderJobController::class, 'decline']);
+    Route::put('/jobs/{id}/status', [ProviderJobController::class, 'updateStatus']);
     Route::put('/jobs/{id}/complete', [ProviderJobController::class, 'complete']);
 
     // Drivers
@@ -170,11 +187,9 @@ Route::prefix('v1/provider')->middleware(['auth:sanctum', 'user.type:provider'])
     Route::put('/drivers/{id}', [DriverController::class, 'update']);
     Route::delete('/drivers/{id}', [DriverController::class, 'destroy']);
 
-    // Trucks
+    // Vehicles
     Route::get('/trucks', [TowTruckController::class, 'index']);
     Route::post('/trucks', [TowTruckController::class, 'store']);
     Route::put('/trucks/{id}', [TowTruckController::class, 'update']);
     Route::delete('/trucks/{id}', [TowTruckController::class, 'destroy']);
-
-
 });

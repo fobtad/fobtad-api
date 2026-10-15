@@ -12,12 +12,17 @@ class TowTruck extends Model
 
     protected $fillable = [
         'provider_id', 'plate_number', 'make', 'model', 'year',
-        'type', 'status', 'flagged_for_maintenance',
+        'type', 'capacity_tonnes', 'status', 'fuel_level', 'last_service_at', 'mileage_km',
+        'flagged_for_maintenance',
     ];
 
     protected $casts = [
         'flagged_for_maintenance' => 'boolean',
         'year'                    => 'integer',
+        'capacity_tonnes'         => 'float',
+        'fuel_level'              => 'integer',
+        'mileage_km'              => 'integer',
+        'last_service_at'         => 'date:Y-m-d',
     ];
 
     public function provider()
@@ -28,5 +33,14 @@ class TowTruck extends Model
     public function bookings()
     {
         return $this->hasMany(Booking::class);
+    }
+
+    /** The job this vehicle is currently out on, if any. */
+    public function activeBooking()
+    {
+        return $this->hasOne(Booking::class)->ofMany(
+            ['id' => 'max'],
+            fn($q) => $q->whereIn('status', Booking::ACTIVE_STATUSES),
+        );
     }
 }

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Hospital;
 use App\Models\HospitalUser;
+use App\Models\Provider;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -12,7 +13,7 @@ use Illuminate\Validation\Rules\Password;
 
 /**
  * TEMPORARY admin tools until the admin portal exists: create hospital logins
- * and approve/suspend self-registered hospitals. Only active while
+ * and approve/suspend self-registered hospitals and providers. Only active while
  * FOBTAD_SETUP_KEY is set in .env.
  */
 class SetupController extends Controller
@@ -87,70 +88,99 @@ class SetupController extends Controller
         return response($this->page($html), 201);
     }
 
-    /**
-     * Approve / suspend hospitals. GET asks for the key; POST (with key) lists hospitals.
-     */
+    /** Approve / suspend hospitals. GET asks for the key; POST (with key) lists them. */
     public function hospitals(Request $request)
+    {
+        return $this->approvals($request, 'hospitals');
+    }
+
+    /** Approve / suspend providers (towing companies etc). */
+    public function providers(Request $request)
+    {
+        return $this->approvals($request, 'providers');
+    }
+
+    public function setStatus(Request $request, $id)
+    {
+        return $this->changeStatus($request, 'hospitals', Hospital::findOrFail($id));
+    }
+
+    public function setProviderStatus(Request $request, $id)
+    {
+        return $this->changeStatus($request, 'providers', Provider::findOrFail($id));
+    }
+
+    private function approvals(Request $request, string $kind)
     {
         abort_unless($this->enabled(), 404);
 
         if ($request->isMethod('get') || !$this->keyMatches($request)) {
             $error = $request->isMethod('post') ? '<div class="err">Setup key is incorrect.</div>' : '';
-            return response($this->page('<h1>Hospital approvals</h1>' . $error
+            return response($this->page('<h1>' . ucfirst(rtrim($kind, 's')) . ' approvals</h1>' . $error
                 . '<form method="post"><label>Setup key<input type="password" name="key" required autofocus></label>'
-                . '<button type="submit">Show hospitals</button></form>'), $error ? 403 : 200);
+                . '<button type="submit">Show ' . $kind . '</button></form>'), $error ? 403 : 200);
         }
 
-        return response($this->page($this->hospitalList($request->input('key'), $request->input('flash'))));
+        return response($this->page($this->approvalList($kind, $request->input('key'))));
     }
 
-    public function setStatus(Request $request, $id)
+    private function changeStatus(Request $request, string $kind, $org)
     {
         abort_unless($this->enabled() && $this->keyMatches($request), 404);
 
-        $status   = $request->validate(['status' => 'required|in:active,pending,suspended'])['status'];
-        $hospital = Hospital::findOrFail($id);
-        $hospital->update(['status' => $status]);
+        $status = $request->validate(['status' => 'required|in:active,pending,suspended'])['status'];
+        $org->update(['status' => $status]);
 
-        $flash = "{$hospital->name} is now " . ($status === 'active' ? 'approved' : $status) . '.';
+        $name  = $org->name ?? $org->company_name;
+        $flash = "{$name} is now " . ($status === 'active' ? 'approved' : $status) . '.';
 
-        return response($this->page($this->hospitalList($request->input('key'), $flash)));
+        return response($this->page($this->approvalList($kind, $request->input('key'), $flash)));
     }
 
-    private function hospitalList(string $key, ?string $flash = null): string
+    private function approvalList(string $kind, string $key, ?string $flash = null): string
     {
-        $hospitals = Hospital::withCount(['users', 'paramedics', 'ambulances'])
+        $isHospital = $kind === 'hospitals';
+        $orgs = ($isHospital
+                ? Hospital::withCount(['users', 'paramedics', 'ambulances'])
+                : Provider::withCount(['users', 'drivers', 'towTrucks']))
             ->orderByRaw("case status when 'pending' then 0 when 'active' then 1 else 2 end")
             ->latest()
             ->get();
 
         $badge = ['pending' => '#B37D00', 'active' => '#3B6D11', 'suspended' => '#A32D2D'];
         $label = ['pending' => 'Pending', 'active' => 'Approved', 'suspended' => 'Suspended'];
-        $button = fn($h, $status, $text, $bg) =>
-            '<form method="post" action="' . e(url("/api/setup/hospitals/{$h->id}/status")) . '" style="display:inline">'
+        $button = fn($o, $status, $text, $bg) =>
+            '<form method="post" action="' . e(url("/api/setup/{$kind}/{$o->id}/status")) . '" style="display:inline">'
             . '<input type="hidden" name="key" value="' . e($key) . '"><input type="hidden" name="status" value="' . $status . '">'
             . '<button class="sm" style="background:' . $bg . '">' . $text . '</button></form>';
 
-        $rows = $hospitals->map(function ($h) use ($badge, $label, $button) {
-            $actions = match ($h->status) {
-                'pending'   => $button($h, 'active', 'Approve', '#3B6D11') . ' ' . $button($h, 'suspended', 'Reject', '#A32D2D'),
-                'active'    => $button($h, 'suspended', 'Suspend', '#A32D2D'),
-                'suspended' => $button($h, 'active', 'Reactivate', '#3B6D11'),
+        $rows = $orgs->map(function ($o) use ($badge, $label, $button, $isHospital) {
+            $actions = match ($o->status) {
+                'pending'   => $button($o, 'active', 'Approve', '#3B6D11') . ' ' . $button($o, 'suspended', 'Reject', '#A32D2D'),
+                'active'    => $button($o, 'suspended', 'Suspend', '#A32D2D'),
+                'suspended' => $button($o, 'active', 'Reactivate', '#3B6D11'),
             };
-            $location = $h->latitude ? '' : ' · <span style="color:#B37D00">no map location</span>';
+            $location = $o->latitude ? '' : ' · <span style="color:#B37D00">no map location</span>';
+            $type     = $isHospital ? ($o->facility_type ?? 'facility') : str_replace('_', ' ', $o->business_type ?? 'provider');
+            $details  = $isHospital
+                ? 'Licence: ' . e($o->licence_number ?? '—') . ' · CAC: ' . e($o->cac_number ?? '—') . ' · ' . $o->paramedics_count . ' paramedics · ' . $o->ambulances_count . ' vehicles'
+                : 'CAC: ' . e($o->cac_number ?? '—') . ' · Services: ' . e(implode(', ', $o->services ?? ['towing'])) . ' · ' . $o->drivers_count . ' drivers · ' . $o->tow_trucks_count . ' vehicles';
 
-            return '<div class="card"><div class="top"><strong>' . e($h->name) . '</strong>'
-                . '<span class="badge" style="color:' . $badge[$h->status] . '">' . $label[$h->status] . '</span></div>'
-                . '<div class="meta">' . e(ucfirst($h->facility_type ?? 'facility')) . ' · ' . e($h->email) . ' · ' . e($h->phone) . '</div>'
-                . '<div class="meta">' . e($h->address) . ($h->lga ? ', ' . e($h->lga) : '') . $location . '</div>'
-                . '<div class="meta">Licence: ' . e($h->licence_number ?? '—') . ' · CAC: ' . e($h->cac_number ?? '—')
-                . ' · ' . $h->paramedics_count . ' paramedics · ' . $h->ambulances_count . ' vehicles · registered ' . $h->created_at->format('j M Y') . '</div>'
+            return '<div class="card"><div class="top"><strong>' . e($o->name ?? $o->company_name) . '</strong>'
+                . '<span class="badge" style="color:' . $badge[$o->status] . '">' . $label[$o->status] . '</span></div>'
+                . '<div class="meta">' . e(ucfirst($type)) . ' · ' . e($o->email) . ' · ' . e($o->phone) . '</div>'
+                . '<div class="meta">' . e($o->address) . ($o->lga ? ', ' . e($o->lga) : '') . $location . '</div>'
+                . '<div class="meta">' . $details . ' · registered ' . $o->created_at->format('j M Y') . '</div>'
                 . '<div class="actions">' . $actions . '</div></div>';
         })->implode('');
 
-        return '<h1>Hospital approvals</h1><p class="muted">Approved hospitals start receiving bookings near them immediately.</p>'
+        $other = $isHospital ? 'providers' : 'hospitals';
+
+        return '<h1>' . ucfirst(rtrim($kind, 's')) . ' approvals</h1>'
+            . '<p class="muted">Approved ' . $kind . ' start receiving requests near them immediately. '
+            . '<a href="' . e(url("/api/setup/{$other}")) . '">Switch to ' . $other . '</a></p>'
             . ($flash ? '<div class="ok-flash">' . e($flash) . '</div>' : '')
-            . ($rows ?: '<p class="muted" style="margin-top:20px">No hospitals yet.</p>');
+            . ($rows ?: '<p class="muted" style="margin-top:20px">No ' . $kind . ' yet.</p>');
     }
 
     private function keyMatches(Request $request): bool
