@@ -22,6 +22,38 @@ class Hospital extends Model
         'fleet_size' => 'integer',
     ];
 
+    /**
+     * The active hospital closest to the pickup point. Hospitals without
+     * coordinates are only used when none have them (or no pickup point given).
+     */
+    public static function nearestActive(?float $lat, ?float $lng): ?self
+    {
+        $active = static::where('status', 'active');
+
+        if ($lat !== null && $lng !== null) {
+            $nearest = (clone $active)
+                ->whereNotNull('latitude')->whereNotNull('longitude')
+                ->get()
+                ->sortBy(fn($h) => static::distanceKm($lat, $lng, $h->latitude, $h->longitude))
+                ->first();
+
+            if ($nearest) {
+                return $nearest;
+            }
+        }
+
+        return $active->oldest('id')->first();
+    }
+
+    public static function distanceKm(float $lat1, float $lng1, float $lat2, float $lng2): float
+    {
+        $dLat = deg2rad($lat2 - $lat1);
+        $dLng = deg2rad($lng2 - $lng1);
+        $a = sin($dLat / 2) ** 2 + cos(deg2rad($lat1)) * cos(deg2rad($lat2)) * sin($dLng / 2) ** 2;
+
+        return 6371 * 2 * atan2(sqrt($a), sqrt(1 - $a));
+    }
+
     public function users()
     {
         return $this->hasMany(HospitalUser::class);

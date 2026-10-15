@@ -84,7 +84,7 @@ class BookingController extends Controller
             'address' => 'sometimes|string',
         ]);
 
-        $hospital = Hospital::where('status', 'active')->first();
+        $hospital = Hospital::nearestActive($data['latitude'], $data['longitude']);
 
         $booking = Booking::create([
             'patient_id' => $request->user()->id,
@@ -125,7 +125,7 @@ class BookingController extends Controller
             'notes' => 'sometimes|string',
         ]);
 
-        $hospital = Hospital::where('status', 'active')->first();
+        $hospital = Hospital::nearestActive($data['pickup_lat'], $data['pickup_lng']);
 
         $booking = Booking::create([
             'patient_id' => $request->user()->id,
@@ -164,12 +164,16 @@ class BookingController extends Controller
             'scheduled_at' => 'required|date|after:now',
             'service_type' => 'required|string',
             'weeks_pregnant' => 'required|integer|min:1|max:45',
+            'pickup_lat' => 'sometimes|nullable|numeric',
+            'pickup_lng' => 'sometimes|nullable|numeric',
+            'destination_lat' => 'sometimes|nullable|numeric',
+            'destination_lng' => 'sometimes|nullable|numeric',
             'is_high_risk' => 'sometimes|boolean',
             'needs_wheelchair' => 'sometimes|boolean',
             'notes' => 'sometimes|string',
         ]);
 
-        $hospital = Hospital::where('status', 'active')->first();
+        $hospital = Hospital::nearestActive($data['pickup_lat'] ?? null, $data['pickup_lng'] ?? null);
 
         $booking = Booking::create([
             'patient_id' => $request->user()->id,
@@ -177,7 +181,11 @@ class BookingController extends Controller
             'type' => 'maternal',
             'status' => 'pending',
             'pickup_address' => $data['pickup_address'],
+            'pickup_latitude' => $data['pickup_lat'] ?? null,
+            'pickup_longitude' => $data['pickup_lng'] ?? null,
             'destination_address' => $data['destination_address'],
+            'destination_latitude' => $data['destination_lat'] ?? null,
+            'destination_longitude' => $data['destination_lng'] ?? null,
             'scheduled_at' => $data['scheduled_at'],
             'incident_type' => $data['service_type'],
             'weeks_pregnant' => $data['weeks_pregnant'],

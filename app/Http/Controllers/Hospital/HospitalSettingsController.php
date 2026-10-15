@@ -35,6 +35,8 @@ class HospitalSettingsController extends Controller
             'website'        => 'nullable|string|max:150',
             'address'        => 'sometimes|string|max:255',
             'lga'            => 'nullable|string|max:100',
+            'latitude'       => 'nullable|numeric|between:-90,90',
+            'longitude'      => 'nullable|numeric|between:-180,180',
             'state'          => 'sometimes|string|max:100',
             'licence_number' => 'nullable|string|max:100',
             'cac_number'     => 'nullable|string|max:100',

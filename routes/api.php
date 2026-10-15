@@ -47,6 +47,9 @@ Route::get('/run-migrate', function () {
 // ── TEMPORARY hospital onboarding page — disabled unless FOBTAD_SETUP_KEY is set ──
 Route::get('/setup/hospital-user', [SetupController::class, 'form']);
 Route::post('/setup/hospital-user', [SetupController::class, 'store'])->middleware('throttle:5,1');
+Route::get('/setup/hospitals', [SetupController::class, 'hospitals']);
+Route::post('/setup/hospitals', [SetupController::class, 'hospitals'])->middleware('throttle:10,1');
+Route::post('/setup/hospitals/{id}/status', [SetupController::class, 'setStatus'])->middleware('throttle:20,1');
 
 // ── Paystack webhook (no auth) ──
 Route::post('/v1/wallet/webhook', [WalletController::class, 'webhook']);
@@ -104,7 +107,8 @@ Route::prefix('v1')->middleware(['auth:sanctum', 'user.type:patient'])->group(fu
 
 // ── Hospital portal auth ──
 Route::prefix('v1/hospital')->group(function () {
-    Route::post('/login', [HospitalAuthController::class, 'login']);
+    Route::post('/register', [HospitalAuthController::class, 'register'])->middleware('throttle:5,1');
+    Route::post('/login', [HospitalAuthController::class, 'login'])->middleware('throttle:10,1');
     Route::post('/logout', [HospitalAuthController::class, 'logout'])
         ->middleware(['auth:sanctum', 'user.type:hospital']);
 });

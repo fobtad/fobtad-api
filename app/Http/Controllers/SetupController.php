@@ -11,9 +11,9 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rules\Password;
 
 /**
- * TEMPORARY: creates hospital portal logins until the admin portal exists.
- * Only active while FOBTAD_SETUP_KEY is set in .env — remove the key (and
- * this controller) once onboarding is done.
+ * TEMPORARY admin tools until the admin portal exists: create hospital logins
+ * and approve/suspend self-registered hospitals. Only active while
+ * FOBTAD_SETUP_KEY is set in .env.
  */
 class SetupController extends Controller
 {
@@ -28,7 +28,7 @@ class SetupController extends Controller
     {
         abort_unless($this->enabled(), 404);
 
-        if (!hash_equals((string) config('services.fobtad.setup_key'), (string) $request->input('key'))) {
+        if (!$this->keyMatches($request)) {
             return response($this->page($this->formHtml(['Setup key is incorrect.'], $request->except(['key', 'password']))), 403);
         }
 
@@ -81,10 +81,81 @@ class SetupController extends Controller
 
         $html = '<div class="ok"><h2>Login created</h2><p><strong>' . e($user->email) . '</strong> can now sign in to the hospital portal for <strong>'
             . e($hospital->name) . '</strong> (hospital #' . $hospital->id . ').</p>'
-            . '<p>When you have finished onboarding, remove <code>FOBTAD_SETUP_KEY</code> from .env and clear the cache to switch this page off.</p>'
+            . '<p>Manage approvals at <a href="' . e(url('/api/setup/hospitals')) . '">/api/setup/hospitals</a>.</p>'
             . '<p><a href="">Create another login</a></p></div>';
 
         return response($this->page($html), 201);
+    }
+
+    /**
+     * Approve / suspend hospitals. GET asks for the key; POST (with key) lists hospitals.
+     */
+    public function hospitals(Request $request)
+    {
+        abort_unless($this->enabled(), 404);
+
+        if ($request->isMethod('get') || !$this->keyMatches($request)) {
+            $error = $request->isMethod('post') ? '<div class="err">Setup key is incorrect.</div>' : '';
+            return response($this->page('<h1>Hospital approvals</h1>' . $error
+                . '<form method="post"><label>Setup key<input type="password" name="key" required autofocus></label>'
+                . '<button type="submit">Show hospitals</button></form>'), $error ? 403 : 200);
+        }
+
+        return response($this->page($this->hospitalList($request->input('key'), $request->input('flash'))));
+    }
+
+    public function setStatus(Request $request, $id)
+    {
+        abort_unless($this->enabled() && $this->keyMatches($request), 404);
+
+        $status   = $request->validate(['status' => 'required|in:active,pending,suspended'])['status'];
+        $hospital = Hospital::findOrFail($id);
+        $hospital->update(['status' => $status]);
+
+        $flash = "{$hospital->name} is now " . ($status === 'active' ? 'approved' : $status) . '.';
+
+        return response($this->page($this->hospitalList($request->input('key'), $flash)));
+    }
+
+    private function hospitalList(string $key, ?string $flash = null): string
+    {
+        $hospitals = Hospital::withCount(['users', 'paramedics', 'ambulances'])
+            ->orderByRaw("case status when 'pending' then 0 when 'active' then 1 else 2 end")
+            ->latest()
+            ->get();
+
+        $badge = ['pending' => '#B37D00', 'active' => '#3B6D11', 'suspended' => '#A32D2D'];
+        $label = ['pending' => 'Pending', 'active' => 'Approved', 'suspended' => 'Suspended'];
+        $button = fn($h, $status, $text, $bg) =>
+            '<form method="post" action="' . e(url("/api/setup/hospitals/{$h->id}/status")) . '" style="display:inline">'
+            . '<input type="hidden" name="key" value="' . e($key) . '"><input type="hidden" name="status" value="' . $status . '">'
+            . '<button class="sm" style="background:' . $bg . '">' . $text . '</button></form>';
+
+        $rows = $hospitals->map(function ($h) use ($badge, $label, $button) {
+            $actions = match ($h->status) {
+                'pending'   => $button($h, 'active', 'Approve', '#3B6D11') . ' ' . $button($h, 'suspended', 'Reject', '#A32D2D'),
+                'active'    => $button($h, 'suspended', 'Suspend', '#A32D2D'),
+                'suspended' => $button($h, 'active', 'Reactivate', '#3B6D11'),
+            };
+            $location = $h->latitude ? '' : ' · <span style="color:#B37D00">no map location</span>';
+
+            return '<div class="card"><div class="top"><strong>' . e($h->name) . '</strong>'
+                . '<span class="badge" style="color:' . $badge[$h->status] . '">' . $label[$h->status] . '</span></div>'
+                . '<div class="meta">' . e(ucfirst($h->facility_type ?? 'facility')) . ' · ' . e($h->email) . ' · ' . e($h->phone) . '</div>'
+                . '<div class="meta">' . e($h->address) . ($h->lga ? ', ' . e($h->lga) : '') . $location . '</div>'
+                . '<div class="meta">Licence: ' . e($h->licence_number ?? '—') . ' · CAC: ' . e($h->cac_number ?? '—')
+                . ' · ' . $h->paramedics_count . ' paramedics · ' . $h->ambulances_count . ' vehicles · registered ' . $h->created_at->format('j M Y') . '</div>'
+                . '<div class="actions">' . $actions . '</div></div>';
+        })->implode('');
+
+        return '<h1>Hospital approvals</h1><p class="muted">Approved hospitals start receiving bookings near them immediately.</p>'
+            . ($flash ? '<div class="ok-flash">' . e($flash) . '</div>' : '')
+            . ($rows ?: '<p class="muted" style="margin-top:20px">No hospitals yet.</p>');
+    }
+
+    private function keyMatches(Request $request): bool
+    {
+        return hash_equals((string) config('services.fobtad.setup_key'), (string) $request->input('key'));
     }
 
     private function enabled(): bool
@@ -133,6 +204,9 @@ class SetupController extends Controller
             . '.row{display:grid;grid-template-columns:1fr 1fr;gap:12px}button{margin-top:20px;width:100%;padding:12px;border:0;border-radius:9px;background:#042C53;color:#fff;font-size:15px;font-weight:600;cursor:pointer}'
             . '.err{background:#FCEBEB;color:#A32D2D;border-radius:8px;padding:10px 14px;font-size:13px;margin-top:16px}'
             . '.ok h2{margin-top:0;color:#3B6D11}code{background:#F7F8FA;padding:2px 6px;border-radius:4px}'
+            . '.card{border:1px solid rgba(4,44,83,.1);border-radius:10px;padding:14px 16px;margin-top:12px}.top{display:flex;justify-content:space-between;gap:8px}'
+            . '.badge{font-size:12px;font-weight:700}.meta{font-size:12px;color:#3D5A7A;margin-top:4px}.actions{margin-top:10px}'
+            . 'button.sm{width:auto;margin:0;padding:7px 14px;font-size:13px}.ok-flash{background:#EAF3DE;color:#3B6D11;border-radius:8px;padding:10px 14px;font-size:13px;margin-top:16px}'
             . '</style></head><body><main>' . $body . '</main></body></html>';
     }
 }
