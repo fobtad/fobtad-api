@@ -238,7 +238,7 @@ class BookingController extends Controller
     public function cancel(Request $request, $id)
     {
         $booking = Booking::where('patient_id', $request->user()->id)
-            ->whereIn('status', ['pending', 'accepted'])
+            ->whereIn('status', ['pending', 'accepted', 'assigned'])
             ->findOrFail($id);
 
         $booking->update([
@@ -246,6 +246,8 @@ class BookingController extends Controller
             'cancelled_at' => now(),
             'cancellation_reason' => $request->input('reason', 'Cancelled by patient'),
         ]);
+
+        $booking->releaseCrew();
 
         return response()->json([
             'success' => true,

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Provider;
 use App\Http\Controllers\Controller;
 use App\Models\Booking;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class ProviderJobController extends Controller
 {
@@ -23,9 +24,11 @@ class ProviderJobController extends Controller
 
     public function accept(Request $request, $id)
     {
+        $providerId = $request->user()->provider_id;
+
         $data = $request->validate([
-            'driver_id'    => 'required|exists:drivers,id',
-            'tow_truck_id' => 'required|exists:tow_trucks,id',
+            'driver_id'    => ['required', Rule::exists('drivers', 'id')->where('provider_id', $providerId)],
+            'tow_truck_id' => ['required', Rule::exists('tow_trucks', 'id')->where('provider_id', $providerId)],
         ]);
 
         $job = Booking::where('provider_id', $request->user()->provider_id)

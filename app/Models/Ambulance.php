@@ -12,13 +12,16 @@ class Ambulance extends Model
 
     protected $fillable = [
         'hospital_id', 'plate_number', 'make', 'model', 'year',
-        'type', 'status', 'fuel_level', 'flagged_for_maintenance',
+        'type', 'status', 'fuel_level', 'last_service_at', 'mileage_km',
+        'flagged_for_maintenance',
     ];
 
     protected $casts = [
         'flagged_for_maintenance' => 'boolean',
         'fuel_level'              => 'integer',
         'year'                    => 'integer',
+        'mileage_km'              => 'integer',
+        'last_service_at'         => 'date:Y-m-d',
     ];
 
     public function hospital()
@@ -29,5 +32,16 @@ class Ambulance extends Model
     public function bookings()
     {
         return $this->hasMany(Booking::class);
+    }
+
+    /** The booking this ambulance is currently out on, if any. */
+    public function activeBooking()
+    {
+        // The status filter must go inside ofMany, otherwise the newest booking
+        // of any status is picked first and then filtered out.
+        return $this->hasOne(Booking::class)->ofMany(
+            ['id' => 'max'],
+            fn($q) => $q->whereIn('status', Booking::ACTIVE_STATUSES),
+        );
     }
 }

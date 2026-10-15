@@ -40,9 +40,28 @@ class HospitalAuthController extends Controller
                     'first_name'   => $user->first_name,
                     'last_name'    => $user->last_name,
                     'email'        => $user->email,
+                    'phone'        => $user->phone,
                     'role'         => $user->role,
                     'hospital'     => $user->hospital,
                 ],
+            ],
+        ]);
+    }
+
+    public function me(Request $request)
+    {
+        $user = $request->user()->load('hospital');
+
+        return response()->json([
+            'success' => true,
+            'data'    => [
+                'id'         => $user->id,
+                'first_name' => $user->first_name,
+                'last_name'  => $user->last_name,
+                'email'      => $user->email,
+                'phone'      => $user->phone,
+                'role'       => $user->role,
+                'hospital'   => $user->hospital,
             ],
         ]);
     }
