@@ -11,7 +11,7 @@ class Payment extends Model
 
     protected $fillable = [
         'booking_id', 'patient_id', 'reference', 'paystack_reference',
-        'amount', 'currency', 'status', 'channel', 'paystack_response', 'paid_at',
+        'amount', 'method', 'currency', 'status', 'channel', 'paystack_response', 'paid_at',
     ];
 
     protected $casts = [

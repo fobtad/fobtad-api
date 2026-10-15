@@ -21,7 +21,7 @@ class Booking extends Model
         'incident_type', 'ride_type', 'is_high_risk', 'needs_wheelchair',
         'weeks_pregnant', 'notes', 'scheduled_at',
         'accepted_at', 'completed_at', 'cancelled_at', 'cancellation_reason',
-        'fare', 'rating', 'rating_comment',
+        'fare', 'payment_status', 'amount_paid', 'rating', 'rating_comment',
     ];
 
     /** Statuses where a crew is out on the job. */
@@ -38,6 +38,7 @@ class Booking extends Model
         'needs_wheelchair'      => 'boolean',
         'weeks_pregnant'        => 'integer',
         'fare'                  => 'float',
+        'amount_paid'           => 'float',
         'rating'                => 'integer',
         'scheduled_at'          => 'datetime',
         'accepted_at'           => 'datetime',
@@ -89,4 +90,11 @@ class Booking extends Model
     public function towTruck()   { return $this->belongsTo(TowTruck::class); }
     public function trip()       { return $this->hasOne(Trip::class); }
     public function payment()    { return $this->hasOne(Payment::class); }
+    public function payments()   { return $this->hasMany(Payment::class); }
+    public function earning()    { return $this->hasOne(Earning::class); }
+
+    public function getAmountDueAttribute(): float
+    {
+        return max(0, round(($this->fare ?? 0) - $this->amount_paid, 2));
+    }
 }

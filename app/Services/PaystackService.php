@@ -7,12 +7,12 @@ use App\Models\Patient;
 
 class PaystackService
 {
-    private string $secretKey;
+    private ?string $secretKey;
     private string $baseUrl = 'https://api.paystack.co';
 
     public function __construct()
     {
-        $this->secretKey = config('services.paystack.secret_key');
+        $this->secretKey = config('services.paystack.secret_key') ?: null;
     }
 
     public function initializePayment(
@@ -21,6 +21,10 @@ class PaystackService
         string $reference,
         array $metadata = []
     ): array {
+        if (!$this->secretKey) {
+            return ['status' => false, 'message' => 'Payments are not configured yet.'];
+        }
+
         $response = Http::withHeaders([
             'Authorization' => "Bearer {$this->secretKey}",
             'Content-Type' => 'application/json',
@@ -38,11 +42,15 @@ class PaystackService
 
     public function verifyPayment(string $reference): array
     {
+        if (!$this->secretKey) {
+            return ['status' => false, 'message' => 'Payments are not configured yet.'];
+        }
+
         $response = Http::withHeaders([
             'Authorization' => "Bearer {$this->secretKey}",
         ])->get("{$this->baseUrl}/transaction/verify/{$reference}");
 
-        return $response->json();
+        return $response->json() ?? ['status' => false];
     }
 
     // Add these methods to app/Services/PaystackService.php

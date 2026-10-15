@@ -200,6 +200,9 @@ class HospitalBookingController extends Controller
             return $booking;
         });
 
+        // Charge the patient's wallet now; anything left is paid by card in the app.
+        app(\App\Services\PaymentService::class)->settle($booking);
+
         return response()->json([
             'success' => true,
             'message' => 'Booking marked as completed.',

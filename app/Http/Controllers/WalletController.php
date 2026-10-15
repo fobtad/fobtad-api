@@ -21,7 +21,9 @@ class WalletController extends Controller
 
         $wallet->load([
             'virtualAccounts' => function ($q) {
-                $q->where('status', 'active')->orderBy('is_primary', 'desc');
+                $q->where('status', 'active')
+                    ->where('paystack_reference', 'not like', 'MOCK-%')
+                    ->orderBy('is_primary', 'desc');
             }
         ]);
 
@@ -159,7 +161,8 @@ class WalletController extends Controller
     public function verifyFunding(Request $request, string $reference)
     {
         try {
-            $result = $this->walletService->verifyCheckout($reference);
+            $wallet = $this->walletService->getOrCreateWallet($request->user());
+            $result = $this->walletService->verifyCheckout($reference, $wallet);
 
             return response()->json([
                 'success' => true,
@@ -182,7 +185,7 @@ class WalletController extends Controller
         $payload = $request->getContent();
         $expected = hash_hmac('sha512', $payload, config('services.paystack.secret_key'));
 
-        if ($signature !== $expected) {
+        if (!config('services.paystack.secret_key') || !$signature || !hash_equals($expected, $signature)) {
             return response()->json(['message' => 'Invalid signature.'], 401);
         }
 

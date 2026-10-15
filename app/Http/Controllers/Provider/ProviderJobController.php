@@ -194,6 +194,9 @@ class ProviderJobController extends Controller
             return $job;
         });
 
+        // Charge the patient's wallet now; anything left is paid by card in the app.
+        app(\App\Services\PaymentService::class)->settle($job);
+
         return response()->json([
             'success' => true,
             'message' => 'Job marked as completed.',
