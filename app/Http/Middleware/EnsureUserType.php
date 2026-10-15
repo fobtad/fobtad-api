@@ -33,6 +33,13 @@ class EnsureUserType
             ], 403);
         }
 
+        if ($type === 'hospital' && $request->user()->hospital?->status === 'suspended') {
+            return response()->json([
+                'success' => false,
+                'message' => 'This hospital account has been suspended. Please contact FOBTAD.',
+            ], 403);
+        }
+
         return $next($request);
     }
 }
