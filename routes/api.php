@@ -9,6 +9,8 @@ use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\Hospital\HospitalAuthController;
 use App\Http\Controllers\Hospital\HospitalDashboardController;
 use App\Http\Controllers\Hospital\HospitalBookingController;
+use App\Http\Controllers\Hospital\HospitalReportController;
+use App\Http\Controllers\Hospital\HospitalSettingsController;
 use App\Http\Controllers\Hospital\ParamedicController;
 use App\Http\Controllers\Hospital\AmbulanceController;
 use App\Http\Controllers\Provider\ProviderAuthController;
@@ -56,7 +58,7 @@ Route::prefix('v1/auth')->group(function () {
 });
 
 // ── Patient protected routes ──
-Route::prefix('v1')->middleware(['auth:sanctum'])->group(function () {
+Route::prefix('v1')->middleware(['auth:sanctum', 'user.type:patient'])->group(function () {
     // Auth
     Route::get('/auth/me', [AuthController::class, 'me']);
     Route::post('/auth/logout', [AuthController::class, 'logout']);
@@ -99,17 +101,28 @@ Route::prefix('v1')->middleware(['auth:sanctum'])->group(function () {
 Route::prefix('v1/hospital')->group(function () {
     Route::post('/login', [HospitalAuthController::class, 'login']);
     Route::post('/logout', [HospitalAuthController::class, 'logout'])
-        ->middleware('auth:sanctum');
+        ->middleware(['auth:sanctum', 'user.type:hospital']);
 });
 
 // ── Hospital portal protected routes ──
-Route::prefix('v1/hospital')->middleware(['auth:sanctum'])->group(function () {
+Route::prefix('v1/hospital')->middleware(['auth:sanctum', 'user.type:hospital'])->group(function () {
+    Route::get('/me', [HospitalAuthController::class, 'me']);
     Route::get('/dashboard', [HospitalDashboardController::class, 'index']);
+    Route::get('/reports', [HospitalReportController::class, 'index']);
+
+    // Profile & account
+    Route::get('/profile', [HospitalSettingsController::class, 'profile']);
+    Route::put('/profile', [HospitalSettingsController::class, 'updateProfile']);
+    Route::put('/account', [HospitalSettingsController::class, 'updateAccount']);
+    Route::put('/password', [HospitalSettingsController::class, 'updatePassword']);
 
     // Bookings
     Route::get('/bookings', [HospitalBookingController::class, 'index']);
+    Route::get('/bookings/summary', [HospitalBookingController::class, 'summary']);
+    Route::get('/bookings/{id}', [HospitalBookingController::class, 'show']);
     Route::put('/bookings/{id}/accept', [HospitalBookingController::class, 'accept']);
     Route::put('/bookings/{id}/decline', [HospitalBookingController::class, 'decline']);
+    Route::put('/bookings/{id}/status', [HospitalBookingController::class, 'updateStatus']);
     Route::put('/bookings/{id}/complete', [HospitalBookingController::class, 'complete']);
 
     // Paramedics
@@ -129,11 +142,11 @@ Route::prefix('v1/hospital')->middleware(['auth:sanctum'])->group(function () {
 Route::prefix('v1/provider')->group(function () {
     Route::post('/login', [ProviderAuthController::class, 'login']);
     Route::post('/logout', [ProviderAuthController::class, 'logout'])
-        ->middleware('auth:sanctum');
+        ->middleware(['auth:sanctum', 'user.type:provider']);
 });
 
 // ── Provider portal protected routes ──
-Route::prefix('v1/provider')->middleware(['auth:sanctum'])->group(function () {
+Route::prefix('v1/provider')->middleware(['auth:sanctum', 'user.type:provider'])->group(function () {
     Route::get('/dashboard', [ProviderDashboardController::class, 'index']);
 
     // Jobs

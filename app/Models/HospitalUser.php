@@ -19,6 +19,8 @@ class HospitalUser extends Authenticatable
 
     protected $hidden = ['password', 'remember_token'];
 
+    protected $appends = ['full_name'];
+
     protected $casts = [
         'is_active'     => 'boolean',
         'last_login_at' => 'datetime',

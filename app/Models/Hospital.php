@@ -11,8 +11,8 @@ class Hospital extends Model
     use HasFactory, SoftDeletes;
 
     protected $fillable = [
-        'name', 'email', 'phone', 'address', 'lga', 'state',
-        'latitude', 'longitude', 'licence_number', 'fleet_size',
+        'name', 'facility_type', 'email', 'phone', 'website', 'address', 'lga', 'state',
+        'latitude', 'longitude', 'licence_number', 'cac_number', 'fleet_size',
         'status', 'logo', 'description',
     ];
 

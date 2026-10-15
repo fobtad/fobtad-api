@@ -12,8 +12,10 @@ class Paramedic extends Model
 
     protected $fillable = [
         'hospital_id', 'first_name', 'last_name', 'email', 'phone',
-        'licence_number', 'status', 'total_trips', 'rating', 'photo',
+        'role', 'shift', 'licence_number', 'status', 'total_trips', 'rating', 'photo',
     ];
+
+    protected $appends = ['full_name'];
 
     protected $casts = [
         'rating'      => 'float',
@@ -28,6 +30,17 @@ class Paramedic extends Model
     public function bookings()
     {
         return $this->hasMany(Booking::class);
+    }
+
+    /** The booking this paramedic is currently out on, if any. */
+    public function activeBooking()
+    {
+        // The status filter must go inside ofMany, otherwise the newest booking
+        // of any status is picked first and then filtered out.
+        return $this->hasOne(Booking::class)->ofMany(
+            ['id' => 'max'],
+            fn($q) => $q->whereIn('status', Booking::ACTIVE_STATUSES),
+        );
     }
 
     public function getFullNameAttribute(): string
