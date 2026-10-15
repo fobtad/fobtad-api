@@ -67,6 +67,17 @@ class Booking extends Model
         if ($this->ambulance && $this->ambulance->status === 'on_trip') {
             $this->ambulance->update(['status' => 'available']);
         }
+
+        if ($this->driver && $this->driver->status === 'on_job') {
+            if ($countTrip) {
+                $this->driver->increment('total_jobs');
+            }
+            $this->driver->update(['status' => 'available']);
+        }
+
+        if ($this->towTruck && $this->towTruck->status === 'on_job') {
+            $this->towTruck->update(['status' => 'available']);
+        }
     }
 
     public function patient()    { return $this->belongsTo(Patient::class); }

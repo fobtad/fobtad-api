@@ -12,8 +12,10 @@ class Driver extends Model
 
     protected $fillable = [
         'provider_id', 'first_name', 'last_name', 'email', 'phone',
-        'licence_number', 'status', 'total_jobs', 'rating', 'photo',
+        'licence_number', 'shift', 'status', 'total_jobs', 'rating', 'photo',
     ];
+
+    protected $appends = ['full_name'];
 
     protected $casts = [
         'rating'     => 'float',
@@ -28,6 +30,15 @@ class Driver extends Model
     public function bookings()
     {
         return $this->hasMany(Booking::class);
+    }
+
+    /** The job this driver is currently out on, if any. */
+    public function activeBooking()
+    {
+        return $this->hasOne(Booking::class)->ofMany(
+            ['id' => 'max'],
+            fn($q) => $q->whereIn('status', Booking::ACTIVE_STATUSES),
+        );
     }
 
     public function getFullNameAttribute(): string
