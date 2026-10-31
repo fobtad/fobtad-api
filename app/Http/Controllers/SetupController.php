@@ -2,6 +2,7 @@
 // app/Http/Controllers/SetupController.php
 namespace App\Http\Controllers;
 
+use App\Models\Admin;
 use App\Models\Hospital;
 use App\Models\HospitalUser;
 use App\Models\Provider;
@@ -181,6 +182,59 @@ class SetupController extends Controller
             . '<a href="' . e(url("/api/setup/{$other}")) . '">Switch to ' . $other . '</a></p>'
             . ($flash ? '<div class="ok-flash">' . e($flash) . '</div>' : '')
             . ($rows ?: '<p class="muted" style="margin-top:20px">No ' . $kind . ' yet.</p>');
+    }
+
+    /** Create a FOBTAD admin portal login. */
+    public function adminForm()
+    {
+        abort_unless($this->enabled(), 404);
+
+        return response($this->page($this->adminFormHtml()));
+    }
+
+    public function storeAdmin(Request $request)
+    {
+        abort_unless($this->enabled(), 404);
+
+        if (!$this->keyMatches($request)) {
+            return response($this->page($this->adminFormHtml(['Setup key is incorrect.'], $request->only(['first_name', 'last_name', 'email']))), 403);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'first_name' => 'required|string|max:100',
+            'last_name'  => 'required|string|max:100',
+            'email'      => 'required|email|unique:admins,email',
+            'password'   => ['required', Password::min(10)->letters()->numbers()],
+        ]);
+
+        if ($validator->fails()) {
+            return response($this->page($this->adminFormHtml($validator->errors()->all(), $request->only(['first_name', 'last_name', 'email']))), 422);
+        }
+
+        // The very first admin is a super admin; later ones made here are regular admins.
+        $admin = Admin::create([
+            ...$validator->safe()->only(['first_name', 'last_name', 'email']),
+            'password' => Hash::make($request->input('password')),
+            'role'     => Admin::exists() ? 'admin' : 'super_admin',
+        ]);
+
+        return response($this->page('<div class="ok"><h2>Admin created</h2><p><strong>' . e($admin->email) . '</strong> ('
+            . e(str_replace('_', ' ', $admin->role)) . ') can now sign in to the admin portal.</p></div>'), 201);
+    }
+
+    private function adminFormHtml(array $errors = [], array $old = []): string
+    {
+        $v   = fn($k) => e($old[$k] ?? '');
+        $err = $errors ? '<div class="err">' . implode('<br>', array_map('e', $errors)) . '</div>' : '';
+
+        return '<h1>Create admin login</h1><p class="muted">The first admin created becomes the super admin (can change settings and add admins).</p>'
+            . $err . '<form method="post">'
+            . '<div class="row"><label>First name<input name="first_name" value="' . $v('first_name') . '" required></label>'
+            . '<label>Last name<input name="last_name" value="' . $v('last_name') . '" required></label></div>'
+            . '<label>Email<input type="email" name="email" value="' . $v('email') . '" required></label>'
+            . '<label>Password <span>(10+ characters, letters and numbers)</span><input type="password" name="password" required></label>'
+            . '<label>Setup key<input type="password" name="key" required></label>'
+            . '<button type="submit">Create admin</button></form>';
     }
 
     private function keyMatches(Request $request): bool

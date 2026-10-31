@@ -8,6 +8,13 @@ use App\Http\Controllers\PatientController;
 use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\EarningsController;
 use App\Http\Controllers\SetupController;
+use App\Http\Controllers\WebRequestController;
+use App\Http\Controllers\Admin\AdminAuthController;
+use App\Http\Controllers\Admin\AdminBookingController;
+use App\Http\Controllers\Admin\AdminDashboardController;
+use App\Http\Controllers\Admin\AdminFinanceController;
+use App\Http\Controllers\Admin\AdminOrganisationController;
+use App\Http\Controllers\Admin\AdminSettingsController;
 use App\Http\Controllers\Hospital\HospitalAuthController;
 use App\Http\Controllers\Hospital\HospitalDashboardController;
 use App\Http\Controllers\Hospital\HospitalBookingController;
@@ -53,6 +60,8 @@ Route::post('/setup/hospital-user', [SetupController::class, 'store'])->middlewa
 Route::get('/setup/hospitals', [SetupController::class, 'hospitals']);
 Route::post('/setup/hospitals', [SetupController::class, 'hospitals'])->middleware('throttle:10,1');
 Route::post('/setup/hospitals/{id}/status', [SetupController::class, 'setStatus'])->middleware('throttle:20,1');
+Route::get('/setup/admin', [SetupController::class, 'adminForm']);
+Route::post('/setup/admin', [SetupController::class, 'storeAdmin'])->middleware('throttle:5,1');
 Route::get('/setup/providers', [SetupController::class, 'providers']);
 Route::post('/setup/providers', [SetupController::class, 'providers'])->middleware('throttle:10,1');
 Route::post('/setup/providers/{id}/status', [SetupController::class, 'setProviderStatus'])->middleware('throttle:20,1');
@@ -61,6 +70,13 @@ Route::post('/setup/providers/{id}/status', [SetupController::class, 'setProvide
 Route::post('/v1/wallet/webhook', [WalletController::class, 'webhook']);
 Route::get('/v1/payments/callback', [PaymentController::class, 'callback']);
 
+
+// ── Website emergency requests (no app, no sign-in) ──
+Route::prefix('v1/web')->group(function () {
+    Route::post('/emergency', [WebRequestController::class, 'store'])->middleware('throttle:web-emergency');
+    Route::get('/requests/{token}', [WebRequestController::class, 'show'])->middleware('throttle:120,1');
+    Route::post('/requests/{token}/pay', [WebRequestController::class, 'pay'])->middleware('throttle:10,1');
+});
 
 // ── Patient auth ──
 Route::prefix('v1/auth')->group(function () {
@@ -206,4 +222,51 @@ Route::prefix('v1/provider')->middleware(['auth:sanctum', 'user.type:provider'])
     Route::post('/trucks', [TowTruckController::class, 'store']);
     Route::put('/trucks/{id}', [TowTruckController::class, 'update']);
     Route::delete('/trucks/{id}', [TowTruckController::class, 'destroy']);
+});
+
+
+// ── Admin portal ──
+Route::prefix('v1/admin')->group(function () {
+    Route::post('/login', [AdminAuthController::class, 'login'])->middleware('throttle:5,1');
+});
+
+Route::prefix('v1/admin')->middleware(['auth:sanctum', 'user.type:admin'])->group(function () {
+    Route::get('/me', [AdminAuthController::class, 'me']);
+    Route::post('/logout', [AdminAuthController::class, 'logout']);
+    Route::put('/password', [AdminAuthController::class, 'updatePassword']);
+    Route::get('/dashboard', [AdminDashboardController::class, 'index']);
+
+    // Hospitals & providers
+    Route::get('/hospitals', [AdminOrganisationController::class, 'hospitals']);
+    Route::get('/hospitals/{id}', [AdminOrganisationController::class, 'hospital']);
+    Route::put('/hospitals/{id}/status', [AdminOrganisationController::class, 'setHospitalStatus']);
+    Route::get('/providers', [AdminOrganisationController::class, 'providers']);
+    Route::get('/providers/{id}', [AdminOrganisationController::class, 'provider']);
+    Route::put('/providers/{id}/status', [AdminOrganisationController::class, 'setProviderStatus']);
+
+    // Bookings & patients
+    Route::get('/bookings', [AdminBookingController::class, 'index']);
+    Route::get('/bookings/{id}', [AdminBookingController::class, 'show']);
+    Route::get('/bookings/{id}/hospital-options', [AdminBookingController::class, 'hospitalOptions']);
+    Route::put('/bookings/{id}/dispatch', [AdminBookingController::class, 'dispatchToHospital']);
+    Route::put('/bookings/{id}/reject', [AdminBookingController::class, 'reject']);
+    Route::put('/bookings/{id}/reassign', [AdminBookingController::class, 'reassign']);
+    Route::put('/bookings/{id}/cancel', [AdminBookingController::class, 'cancel']);
+    Route::post('/bookings/{id}/refund', [AdminBookingController::class, 'refund']);
+    Route::get('/patients', [AdminBookingController::class, 'patients']);
+    Route::put('/patients/{id}/unblock', [AdminBookingController::class, 'unblockPatient']);
+
+    // Finance
+    Route::get('/finance/summary', [AdminFinanceController::class, 'summary']);
+    Route::get('/finance/payments', [AdminFinanceController::class, 'payments']);
+    Route::get('/finance/wallet-transactions', [AdminFinanceController::class, 'walletTransactions']);
+    Route::get('/payouts', [AdminFinanceController::class, 'payouts']);
+    Route::put('/payouts/{id}', [AdminFinanceController::class, 'processPayout']);
+
+    // Settings & admin team
+    Route::get('/settings', [AdminSettingsController::class, 'show']);
+    Route::put('/settings', [AdminSettingsController::class, 'update']);
+    Route::get('/admins', [AdminAuthController::class, 'index']);
+    Route::post('/admins', [AdminAuthController::class, 'store']);
+    Route::put('/admins/{id}', [AdminAuthController::class, 'update']);
 });

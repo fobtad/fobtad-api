@@ -29,6 +29,7 @@ class Patient extends Authenticatable
         'emergency_contact_phone',
         'emergency_contact_relationship',
         'is_verified',
+        'web_blocked_at',
         'biometric_enabled',
         'profile_photo',
         'email_verified_at',
@@ -38,6 +39,7 @@ class Patient extends Authenticatable
 
     protected $casts = [
         'is_verified' => 'boolean',
+        'web_blocked_at' => 'datetime',
         'biometric_enabled' => 'boolean',
         'email_verified_at' => 'datetime',
     ];

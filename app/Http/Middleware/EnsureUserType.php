@@ -2,6 +2,7 @@
 // app/Http/Middleware/EnsureUserType.php
 namespace App\Http\Middleware;
 
+use App\Models\Admin;
 use App\Models\HospitalUser;
 use App\Models\Patient;
 use App\Models\ProviderUser;
@@ -20,13 +21,14 @@ class EnsureUserType
         'patient'  => Patient::class,
         'hospital' => HospitalUser::class,
         'provider' => ProviderUser::class,
+        'admin'    => Admin::class,
     ];
 
     public function handle(Request $request, Closure $next, string $type): Response
     {
         $class = self::TYPES[$type] ?? null;
 
-        if (!$class || !($request->user() instanceof $class)) {
+        if (!$class || !($request->user() instanceof $class) || ($type === 'admin' && $request->user()->is_active === false)) {
             return response()->json([
                 'success' => false,
                 'message' => 'This account cannot access this resource.',
