@@ -8,6 +8,7 @@ use App\Http\Controllers\PatientController;
 use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\EarningsController;
 use App\Http\Controllers\SetupController;
+use App\Http\Controllers\WebRequestController;
 use App\Http\Controllers\Admin\AdminAuthController;
 use App\Http\Controllers\Admin\AdminBookingController;
 use App\Http\Controllers\Admin\AdminDashboardController;
@@ -69,6 +70,13 @@ Route::post('/setup/providers/{id}/status', [SetupController::class, 'setProvide
 Route::post('/v1/wallet/webhook', [WalletController::class, 'webhook']);
 Route::get('/v1/payments/callback', [PaymentController::class, 'callback']);
 
+
+// ── Website emergency requests (no app, no sign-in) ──
+Route::prefix('v1/web')->group(function () {
+    Route::post('/emergency', [WebRequestController::class, 'store'])->middleware('throttle:web-emergency');
+    Route::get('/requests/{token}', [WebRequestController::class, 'show'])->middleware('throttle:120,1');
+    Route::post('/requests/{token}/pay', [WebRequestController::class, 'pay'])->middleware('throttle:10,1');
+});
 
 // ── Patient auth ──
 Route::prefix('v1/auth')->group(function () {
@@ -239,10 +247,14 @@ Route::prefix('v1/admin')->middleware(['auth:sanctum', 'user.type:admin'])->grou
     // Bookings & patients
     Route::get('/bookings', [AdminBookingController::class, 'index']);
     Route::get('/bookings/{id}', [AdminBookingController::class, 'show']);
+    Route::get('/bookings/{id}/hospital-options', [AdminBookingController::class, 'hospitalOptions']);
+    Route::put('/bookings/{id}/dispatch', [AdminBookingController::class, 'dispatchToHospital']);
+    Route::put('/bookings/{id}/reject', [AdminBookingController::class, 'reject']);
     Route::put('/bookings/{id}/reassign', [AdminBookingController::class, 'reassign']);
     Route::put('/bookings/{id}/cancel', [AdminBookingController::class, 'cancel']);
     Route::post('/bookings/{id}/refund', [AdminBookingController::class, 'refund']);
     Route::get('/patients', [AdminBookingController::class, 'patients']);
+    Route::put('/patients/{id}/unblock', [AdminBookingController::class, 'unblockPatient']);
 
     // Finance
     Route::get('/finance/summary', [AdminFinanceController::class, 'summary']);

@@ -30,7 +30,8 @@ class AdminDashboardController extends AdminController
                     'active'     => Booking::whereIn('status', Booking::ACTIVE_STATUSES)->count(),
                     'pending'    => Booking::where('status', 'pending')->count(),
                     // Nobody can see these: no hospital/provider was available when booked.
-                    'unassigned' => Booking::where('status', 'pending')->whereNull('hospital_id')->whereNull('provider_id')->count(),
+                    'unassigned' => Booking::where('status', 'pending')->whereNull('hospital_id')->whereNull('provider_id')->where('source', '!=', 'web')->count(),
+                    'web_requests' => Booking::where('source', 'web')->where('status', 'pending')->whereNull('hospital_id')->count(),
                     'emergency_pending' => Booking::where('status', 'pending')->where('type', 'emergency')->count(),
                 ],
                 'money' => [

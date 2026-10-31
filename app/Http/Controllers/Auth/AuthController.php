@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\WebRequestController;
 use App\Models\Patient;
 use App\Services\OtpService;
 use Illuminate\Http\Request;
@@ -17,6 +18,15 @@ class AuthController extends Controller
 
     public function register(Request $request)
     {
+        // A website emergency request may have made a background account with this number. Free the
+        // number so the person can sign up; the guest account (and its trip) stays separate.
+        if ($phone = WebRequestController::normalisePhone((string) $request->input('phone'))) {
+            Patient::where('phone', 'like', '%' . substr($phone, -10))
+                ->where('email', 'like', '%' . WebRequestController::GUEST_EMAIL_DOMAIN)
+                ->get()
+                ->each(fn($guest) => $guest->update(['phone' => "{$guest->phone}-web-{$guest->id}"]));
+        }
+
         $data = $request->validate([
             'first_name' => 'required|string|max:100',
             'last_name' => 'required|string|max:100',

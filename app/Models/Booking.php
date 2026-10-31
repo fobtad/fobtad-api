@@ -12,20 +12,23 @@ class Booking extends Model
     use HasFactory, SoftDeletes;
 
     protected $fillable = [
-        'reference', 'patient_id', 'hospital_id', 'provider_id',
+        'reference', 'tracking_token', 'source', 'patient_id', 'hospital_id', 'provider_id',
         'paramedic_id', 'ambulance_id', 'driver_id', 'tow_truck_id',
         'type', 'status',
         'pickup_address', 'pickup_latitude', 'pickup_longitude',
         'destination_address', 'destination_latitude', 'destination_longitude',
         'estimated_min_price', 'estimated_max_price',
         'incident_type', 'ride_type', 'is_high_risk', 'needs_wheelchair',
-        'weeks_pregnant', 'notes', 'scheduled_at',
+        'weeks_pregnant', 'notes', 'scheduled_at', 'confirmed_at',
         'accepted_at', 'completed_at', 'cancelled_at', 'cancellation_reason',
         'fare', 'payment_status', 'amount_paid', 'rating', 'rating_comment',
     ];
 
     /** Statuses where a crew is out on the job. */
     public const ACTIVE_STATUSES = ['accepted', 'assigned', 'en_route', 'arrived'];
+
+    /** The website tracking link is a secret only the person who asked for help holds. */
+    protected $hidden = ['tracking_token'];
 
     protected $casts = [
         'estimated_min_price'   => 'integer',
@@ -41,6 +44,7 @@ class Booking extends Model
         'amount_paid'           => 'float',
         'rating'                => 'integer',
         'scheduled_at'          => 'datetime',
+        'confirmed_at'          => 'datetime',
         'accepted_at'           => 'datetime',
         'completed_at'          => 'datetime',
         'cancelled_at'          => 'datetime',
