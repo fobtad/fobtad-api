@@ -92,8 +92,9 @@ class AdminBookingController extends AdminController
     }
 
     /**
-     * Approved hospitals for a website request, nearest first, with free crews.
-     * The nearest one with a free ambulance and paramedic is marked recommended.
+     * Approved hospitals for a website request, nearest first, with free vehicles by type.
+     * Recommends, per level of care, the nearest hospital with a suitable ambulance and a paramedic free:
+     * ALS needs an ALS ambulance; BLS can use BLS or ALS. Wheelchair and neonatal vehicles never count.
      */
     public function hospitalOptions($id)
     {
@@ -102,37 +103,57 @@ class AdminBookingController extends AdminController
         $lng = $booking->pickup_longitude;
 
         $hospitals = Hospital::where('status', 'active')
-            ->withCount(['availableAmbulances', 'availableParamedics'])
+            ->with('availableAmbulances:id,hospital_id,type')
+            ->withCount('availableParamedics')
             ->get(['id', 'name', 'phone', 'address', 'lga', 'state', 'latitude', 'longitude'])
-            ->map(fn($h) => [
-                'id'                   => $h->id,
-                'name'                 => $h->name,
-                'phone'                => $h->phone,
-                'area'                 => implode(', ', array_filter([$h->lga, $h->state])) ?: $h->address,
-                'distance_km'          => $lat !== null && $h->latitude !== null
-                    ? round(Hospital::distanceKm($lat, $lng, $h->latitude, $h->longitude), 1) : null,
-                'available_ambulances' => $h->available_ambulances_count,
-                'available_paramedics' => $h->available_paramedics_count,
-                'current'              => $booking->hospital_id === $h->id,
-            ])
+            ->map(function ($h) use ($booking, $lat, $lng) {
+                $free = $h->availableAmbulances->countBy('type');
+                $crew = $h->available_paramedics_count > 0;
+
+                return [
+                    'id'                   => $h->id,
+                    'name'                 => $h->name,
+                    'phone'                => $h->phone,
+                    'area'                 => implode(', ', array_filter([$h->lga, $h->state])) ?: $h->address,
+                    'distance_km'          => $lat !== null && $h->latitude !== null
+                        ? round(Hospital::distanceKm($lat, $lng, $h->latitude, $h->longitude), 1) : null,
+                    'free_ambulances'      => [
+                        'standard'   => $free['standard'] ?? 0,
+                        'advanced'   => $free['advanced'] ?? 0,
+                        'wheelchair' => $free['wheelchair'] ?? 0,
+                        'neonatal'   => $free['neonatal'] ?? 0,
+                    ],
+                    'available_paramedics' => $h->available_paramedics_count,
+                    'can_go'               => [
+                        'standard' => $crew && ($free['standard'] ?? 0) + ($free['advanced'] ?? 0) > 0,
+                        'advanced' => $crew && ($free['advanced'] ?? 0) > 0,
+                    ],
+                    'current'              => $booking->hospital_id === $h->id,
+                ];
+            })
             ->sortBy(fn($h) => $h['distance_km'] ?? INF)
             ->values();
 
-        $recommended = $hospitals->first(fn($h) => $h['available_ambulances'] > 0 && $h['available_paramedics'] > 0)
-            ?? $hospitals->first();
-
         return response()->json(['success' => true, 'data' => [
             'has_location' => $lat !== null,
-            'recommended_id' => $recommended['id'] ?? null,
+            'care_level'   => in_array($booking->ride_type, ['standard', 'advanced'], true) ? $booking->ride_type : null,
+            // Without GPS we can't tell which hospital is nearest, so nothing is recommended.
+            'recommended'  => $lat === null ? ['standard' => null, 'advanced' => null] : [
+                'standard' => $hospitals->first(fn($h) => $h['can_go']['standard'])['id'] ?? null,
+                'advanced' => $hospitals->first(fn($h) => $h['can_go']['advanced'])['id'] ?? null,
+            ],
             'hospitals' => $hospitals,
         ]]);
     }
 
-    /** Website request confirmed by phone: send it to the chosen hospital, priced from that hospital. */
+    /** Website request confirmed by phone: send it to the chosen hospital, priced by level of care and distance from that hospital. */
     public function dispatchToHospital(Request $request, $id)
     {
         $this->authorizeAbility($request, 'operations');
-        $data = $request->validate(['hospital_id' => 'required|integer']);
+        $data = $request->validate([
+            'hospital_id' => 'required|integer',
+            'care_level'  => 'required|in:standard,advanced',
+        ]);
 
         $booking  = Booking::where('status', 'pending')->findOrFail($id);
         $hospital = Hospital::where('status', 'active')->find($data['hospital_id']);
@@ -144,8 +165,9 @@ class AdminBookingController extends AdminController
         $booking->update([
             'hospital_id'  => $hospital->id,
             'provider_id'  => null,
+            'ride_type'    => $data['care_level'],
             'confirmed_at' => $booking->confirmed_at ?? now(),
-            'fare'         => FareCalculator::forBooking($booking->type, $booking->ride_type, $booking->pickup_latitude, $booking->pickup_longitude,
+            'fare'         => FareCalculator::forBooking($booking->type, $data['care_level'], $booking->pickup_latitude, $booking->pickup_longitude,
                 $booking->destination_latitude, $booking->destination_longitude, $hospital),
         ]);
 

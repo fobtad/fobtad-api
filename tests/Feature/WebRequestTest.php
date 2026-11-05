@@ -27,11 +27,11 @@ class WebRequestTest extends TestCase
         return Admin::create(['first_name' => 'A', 'last_name' => $role, 'email' => "{$role}@fobtad.test", 'password' => Hash::make('secret12345'), 'role' => $role]);
     }
 
-    private function hospital(string $name, float $lat, float $lng, int $crews): Hospital
+    private function hospital(string $name, float $lat, float $lng, int $crews, string $type = 'standard'): Hospital
     {
         $h = Hospital::create(['name' => $name, 'email' => str($name)->slug() . '@t.test', 'phone' => '1', 'address' => 'x', 'status' => 'active', 'latitude' => $lat, 'longitude' => $lng]);
         for ($i = 0; $i < $crews; $i++) {
-            Ambulance::create(['hospital_id' => $h->id, 'plate_number' => "LAG-{$h->id}{$i}", 'type' => 'standard', 'status' => 'available']);
+            Ambulance::create(['hospital_id' => $h->id, 'plate_number' => "LAG-{$h->id}{$i}", 'type' => $type, 'status' => 'available']);
             Paramedic::create(['hospital_id' => $h->id, 'first_name' => 'P', 'last_name' => "{$h->id}{$i}", 'email' => "p{$h->id}{$i}@t.test", 'phone' => "0809{$h->id}{$i}", 'role' => 'paramedic', 'status' => 'available']);
         }
 
@@ -77,16 +77,44 @@ class WebRequestTest extends TestCase
 
         Sanctum::actingAs($this->admin());
         $options = $this->getJson("/api/v1/admin/bookings/{$booking->id}/hospital-options")->assertOk();
-        $this->assertSame($free->id, $options->json('data.recommended_id'));
+        $this->assertSame($free->id, $options->json('data.recommended.standard'));
+        $this->assertNull($options->json('data.recommended.advanced'));
         $this->assertSame($busy->id, $options->json('data.hospitals.0.id'));
 
-        $this->putJson("/api/v1/admin/bookings/{$booking->id}/dispatch", ['hospital_id' => $free->id])->assertOk();
+        $this->putJson("/api/v1/admin/bookings/{$booking->id}/dispatch", ['hospital_id' => $free->id])->assertStatus(422)->assertJsonValidationErrors('care_level');
+        $this->putJson("/api/v1/admin/bookings/{$booking->id}/dispatch", ['hospital_id' => $free->id, 'care_level' => 'standard'])->assertOk();
         $booking->refresh();
         $this->assertSame($free->id, $booking->hospital_id);
+        $this->assertSame('standard', $booking->ride_type);
         $this->assertNotNull($booking->confirmed_at);
         $this->assertGreaterThan(0, $booking->fare);
 
         $this->getJson("/api/v1/web/requests/{$token}")->assertJsonPath('data.stage', 'sent')->assertJsonPath('data.hospital.name', 'Free crew');
+    }
+
+    public function test_recommendation_follows_the_level_of_care_and_ignores_wheelchair_vans(): void
+    {
+        $this->hospital('Wheelchair only', 6.4475, 3.4724, 1, 'wheelchair');
+        $bls = $this->hospital('BLS only', 6.45, 3.48, 1, 'standard');
+        $als = $this->hospital('ALS further away', 6.50, 3.50, 1, 'advanced');
+        $this->postJson('/api/v1/web/emergency', self::REQUEST);
+        $booking = Booking::sole();
+
+        Sanctum::actingAs($this->admin());
+        $data = $this->getJson("/api/v1/admin/bookings/{$booking->id}/hospital-options")->assertOk()->json('data');
+
+        $this->assertSame($bls->id, $data['recommended']['standard']);
+        $this->assertSame($als->id, $data['recommended']['advanced']);
+        $this->assertSame(1, $data['hospitals'][0]['free_ambulances']['wheelchair']);
+        $this->assertFalse($data['hospitals'][0]['can_go']['standard']);
+
+        $this->putJson("/api/v1/admin/bookings/{$booking->id}/dispatch", ['hospital_id' => $als->id, 'care_level' => 'advanced'])->assertOk();
+        $this->assertSame('advanced', $booking->fresh()->ride_type);
+        $this->assertSame(15000.0, (float) $booking->fresh()->fare);
+
+        $this->postJson('/api/v1/web/emergency', [...self::REQUEST, 'phone' => '08035550000', 'latitude' => null, 'longitude' => null]);
+        $typed = Booking::where('pickup_address', self::REQUEST['address'])->latest('id')->first();
+        $this->assertNull($this->getJson("/api/v1/admin/bookings/{$typed->id}/hospital-options")->json('data.recommended.standard'));
     }
 
     public function test_fake_request_can_block_the_number_and_support_cannot_act(): void
